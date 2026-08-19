@@ -3,18 +3,13 @@
 
   // ============================================================
   // Storage: settings are encrypted at rest with a locally-held
-  // AES-GCM key. NOTE — this is obfuscation, not real security:
-  // since there's no password/login for this single-user tool,
-  // the decryption key has to live in the browser too (so the
-  // page can load without asking you to re-enter anything). It
-  // keeps your keys out of plain sight in localStorage/devtools,
-  // but anyone with access to this browser profile could still
-  // recover the key programmatically. Don't use a shared machine.
+  // AES-GCM key (obfuscation, not real security — see README).
   // ============================================================
 
   const CRYPTO_KEY_STORAGE = "elucidateCryptoKey";
   const SETTINGS_STORAGE = "elucidateSettings";
   const SIDEBAR_STORAGE = "elucidateSidebarCollapsed";
+  const PREFS_STORAGE = "elucidatePrefs"; // system instructions, theme, animation
 
   function bytesToBase64(bytes) {
     let binary = "";
@@ -37,7 +32,7 @@
           "decrypt"
         ]);
       } catch {
-        // fall through to regenerate a fresh key below
+        // fall through to regenerate
       }
     }
     const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
@@ -72,33 +67,55 @@
     model: "auto:free",
     courseId: "",
     activeTab: "modules",
-    currentContext: null, // { title, body, extra, mediaHints }
-    messages: [], // [{role, content}]
+    currentContext: null,    // { title, body, extra, mediaHints, htmlUrl }
+    messages: [],            // [{role, content}]
     canvasUserName: "You",
-    cryptoKey: null
+    cryptoKey: null,
+    // Settings/prefs
+    systemInstructions: "",
+    theme: "light",
+    loadingAnimation: "dots",
+    // File attachments for current message
+    pendingAttachments: [],
+    // Current chat session ID (supabase)
+    currentSessionId: null
   };
+
+  // ---------- pages ----------
+  const pages = {
+    connect: document.getElementById("page-connect"),
+    model: document.getElementById("page-model"),
+    chat: document.getElementById("page-chat"),
+    settings: document.getElementById("page-settings"),
+    docs: document.getElementById("page-docs"),
+    logout: document.getElementById("page-logout")
+  };
+
+  function showPage(name) {
+    Object.values(pages).forEach(p => {
+      if (p) { p.hidden = true; p.classList.remove("active"); }
+    });
+    if (pages[name]) {
+      pages[name].hidden = false;
+      pages[name].classList.add("active");
+    }
+  }
 
   // ---------- element refs ----------
   const el = {
+    // Chat page
     appShell: document.getElementById("app-shell"),
     sidebar: document.getElementById("sidebar"),
     sidebarCollapseBtn: document.getElementById("sidebar-collapse-btn"),
 
-    canvasUrl: document.getElementById("canvas-url"),
-    canvasToken: document.getElementById("canvas-token"),
-    bazaarKey: document.getElementById("bazaar-key"),
-    modelSelect: document.getElementById("model-select"),
-    customModelField: document.getElementById("custom-model-field"),
-    customModel: document.getElementById("custom-model"),
-    saveSettings: document.getElementById("save-settings"),
-    settingsStatus: document.getElementById("settings-status"),
-    settingsToggle: document.getElementById("settings-toggle"),
-    settingsBody: document.getElementById("settings-body"),
-
     coursePanel: document.getElementById("course-panel"),
+    courseToggle: document.getElementById("course-toggle"),
+    courseBody: document.getElementById("course-body"),
     courseSelect: document.getElementById("course-select"),
 
     tabsPanel: document.getElementById("tabs-panel"),
+    tabsToggle: document.getElementById("tabs-toggle"),
+    tabsBody: document.getElementById("tabs-body"),
     tabStrip: document.getElementById("tab-strip"),
     itemList: document.getElementById("item-list"),
     moduleItemList: document.getElementById("module-item-list"),
@@ -111,47 +128,84 @@
     previewExtra: document.getElementById("preview-extra"),
     previewText: document.getElementById("preview-text"),
     mediaWarning: document.getElementById("media-warning"),
+    previewCanvasLink: document.getElementById("preview-canvas-link"),
 
     chatLog: document.getElementById("chat-log"),
     emptyState: document.getElementById("empty-state"),
     promptChips: document.getElementById("prompt-chips"),
     chatForm: document.getElementById("chat-form"),
     chatInput: document.getElementById("chat-input"),
-    chatSend: document.getElementById("chat-send")
+
+    attachBtn: document.getElementById("attach-btn"),
+    fileInput: document.getElementById("file-input"),
+    attachmentChips: document.getElementById("attachment-chips"),
+
+    sidebarNav: document.getElementById("sidebar-nav"),
+
+    // Connect page
+    canvasUrl: document.getElementById("canvas-url"),
+    canvasToken: document.getElementById("canvas-token"),
+    bazaarKey: document.getElementById("bazaar-key"),
+    rememberMe: document.getElementById("remember-me"),
+    saveSettings: document.getElementById("save-settings"),
+    settingsStatus: document.getElementById("settings-status"),
+
+    connectTabs: document.getElementById("connect-tabs"),
+    connectKeysTab: document.getElementById("connect-keys-tab"),
+    connectLoginTab: document.getElementById("connect-login-tab"),
+    authEmail: document.getElementById("auth-email"),
+    authPassword: document.getElementById("auth-password"),
+    authSignin: document.getElementById("auth-signin"),
+    authSignup: document.getElementById("auth-signup"),
+    authStatus: document.getElementById("auth-status"),
+
+    // Model page
+    modelGrid: document.getElementById("model-grid"),
+    customModelField: document.getElementById("custom-model-field"),
+    customModel: document.getElementById("custom-model"),
+    modelContinue: document.getElementById("model-continue"),
+
+    // Settings page
+    settingsBack: document.getElementById("settings-back"),
+    systemInstructions: document.getElementById("system-instructions"),
+    animationGrid: document.getElementById("animation-grid"),
+    settingsCanvasUrl: document.getElementById("settings-canvas-url"),
+    settingsCanvasToken: document.getElementById("settings-canvas-token"),
+    settingsBazaarKey: document.getElementById("settings-bazaar-key"),
+    settingsModelSelect: document.getElementById("settings-model-select"),
+    settingsCustomModelField: document.getElementById("settings-custom-model-field"),
+    settingsCustomModel: document.getElementById("settings-custom-model"),
+    settingsSaveKeys: document.getElementById("settings-save-keys"),
+    settingsSaveStatus: document.getElementById("settings-save-status"),
+
+    // Docs page
+    docsBack: document.getElementById("docs-back"),
+
+    // Logout page
+    logoutConfirm: document.getElementById("logout-confirm"),
+    logoutCancel: document.getElementById("logout-cancel")
   };
 
   // ---------- persistence ----------
-  async function loadSaved() {
-    if (localStorage.getItem(SIDEBAR_STORAGE) === "1") {
-      el.appShell.classList.add("sidebar-collapsed");
-    }
-
+  async function loadSavedKeys() {
     const cipher = localStorage.getItem(SETTINGS_STORAGE);
-    if (!cipher) return;
+    if (!cipher) return false;
 
     try {
       state.cryptoKey = state.cryptoKey || (await getOrCreateCryptoKey());
       const saved = await decryptFromStorage(state.cryptoKey, cipher);
-      if (saved.canvasUrl) el.canvasUrl.value = saved.canvasUrl;
-      if (saved.canvasToken) el.canvasToken.value = saved.canvasToken;
-      if (saved.bazaarKey) el.bazaarKey.value = saved.bazaarKey;
-      if (saved.model) {
-        const known = [...el.modelSelect.options].some(o => o.value === saved.model);
-        if (known) {
-          el.modelSelect.value = saved.model;
-        } else {
-          el.modelSelect.value = "custom";
-          el.customModelField.hidden = false;
-          el.customModel.value = saved.model;
-        }
-      }
+      if (saved.canvasUrl) { state.canvasUrl = saved.canvasUrl; el.canvasUrl.value = saved.canvasUrl; }
+      if (saved.canvasToken) { state.canvasToken = saved.canvasToken; el.canvasToken.value = saved.canvasToken; }
+      if (saved.bazaarKey) { state.bazaarKey = saved.bazaarKey; el.bazaarKey.value = saved.bazaarKey; }
+      if (saved.model) state.model = saved.model;
+      return !!(saved.canvasUrl && saved.canvasToken && saved.bazaarKey);
     } catch {
-      // Corrupted or unreadable — drop it rather than fail to load the app.
       localStorage.removeItem(SETTINGS_STORAGE);
+      return false;
     }
   }
 
-  async function persistSettings() {
+  async function persistKeys() {
     state.cryptoKey = state.cryptoKey || (await getOrCreateCryptoKey());
     const cipher = await encryptToStorage(state.cryptoKey, {
       canvasUrl: state.canvasUrl,
@@ -162,16 +216,43 @@
     localStorage.setItem(SETTINGS_STORAGE, cipher);
   }
 
-  el.modelSelect.addEventListener("change", () => {
-    el.customModelField.hidden = el.modelSelect.value !== "custom";
-    if (el.modelSelect.value === "custom") el.customModel.focus();
-  });
+  function loadPrefs() {
+    try {
+      const raw = localStorage.getItem(PREFS_STORAGE);
+      if (raw) {
+        const prefs = JSON.parse(raw);
+        if (prefs.systemInstructions != null) state.systemInstructions = prefs.systemInstructions;
+        if (prefs.theme) state.theme = prefs.theme;
+        if (prefs.loadingAnimation) state.loadingAnimation = prefs.loadingAnimation;
+      }
+    } catch { /* ignore */ }
+    applyTheme(state.theme);
+  }
 
-  // ---------- sidebar collapse ----------
-  el.sidebarCollapseBtn.addEventListener("click", () => {
-    const collapsed = el.appShell.classList.toggle("sidebar-collapsed");
-    localStorage.setItem(SIDEBAR_STORAGE, collapsed ? "1" : "0");
-  });
+  function savePrefs() {
+    localStorage.setItem(PREFS_STORAGE, JSON.stringify({
+      systemInstructions: state.systemInstructions,
+      theme: state.theme,
+      loadingAnimation: state.loadingAnimation
+    }));
+    // Also try saving to Supabase (fire and forget)
+    if (window.SupabaseClient && window.SupabaseClient.isConfigured()) {
+      window.SupabaseClient.saveSettings({
+        system_instructions: state.systemInstructions,
+        theme: state.theme,
+        loading_animation: state.loadingAnimation
+      }).catch(() => {});
+    }
+  }
+
+  function applyTheme(theme) {
+    state.theme = theme;
+    document.documentElement.setAttribute("data-theme", theme);
+    // Update theme button states
+    document.querySelectorAll(".theme-btn").forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.theme === theme);
+    });
+  }
 
   // ---------- helpers ----------
   async function api(path, body) {
@@ -185,9 +266,9 @@
     return data;
   }
 
-  function setStatus(msg, kind) {
-    el.settingsStatus.textContent = msg;
-    el.settingsStatus.className = "hint" + (kind ? ` ${kind}` : "");
+  function setStatus(el, msg, kind) {
+    el.textContent = msg;
+    el.className = "hint" + (kind ? ` ${kind}` : "");
   }
 
   function togglePanel(toggleBtn, bodyEl) {
@@ -196,7 +277,6 @@
     bodyEl.hidden = expanded;
   }
 
-  // Turn a raw model id like "qwen/qwen3-235b-a22b:free" into "Qwen3 235B A22B"
   function formatModelName(raw) {
     if (!raw) return "Assistant";
     let name = raw.split("/").pop().replace(/:free$/i, "");
@@ -206,86 +286,277 @@
     return name || "Assistant";
   }
 
-  // ---------- settings ----------
-  el.settingsToggle.addEventListener("click", () => togglePanel(el.settingsToggle, el.settingsBody));
+  function escapeHtml(str) {
+    return String(str).replace(
+      /[&<>"']/g,
+      m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m])
+    );
+  }
 
-  el.saveSettings.addEventListener("click", async () => {
-    state.canvasUrl = el.canvasUrl.value.trim();
-    state.canvasToken = el.canvasToken.value.trim();
-    state.bazaarKey = el.bazaarKey.value.trim();
-    state.model = el.modelSelect.value === "custom" ? el.customModel.value.trim() : el.modelSelect.value;
-
-    if (!state.canvasUrl || !state.canvasToken) {
-      setStatus("Enter your Canvas URL and access token.", "error");
-      return;
+  // ---------- typing animation HTML ----------
+  function getTypingAnimationHtml() {
+    switch (state.loadingAnimation) {
+      case "bar":
+        return `<span class="typing-bar"></span>`;
+      case "spinner":
+        return `<span class="typing-spinner"></span>`;
+      case "waveform":
+        return `<span class="typing-waveform"><span></span><span></span><span></span><span></span><span></span></span>`;
+      default: // dots
+        return `<span class="typing-dots"><span></span><span></span><span></span></span>`;
     }
-    if (!state.bazaarKey) {
-      setStatus("Enter your BazaarLink API key.", "error");
-      return;
-    }
-    if (el.modelSelect.value === "custom" && !state.model) {
-      setStatus("Enter a custom model ID, or switch back to Auto (free).", "error");
-      return;
-    }
+  }
 
-    await persistSettings();
-    setStatus("Connecting…");
-    el.saveSettings.disabled = true;
-    const originalLabel = el.saveSettings.textContent;
-    el.saveSettings.innerHTML = `<span class="btn-spinner"></span>Connecting…`;
+  // ============================================================
+  // CONNECT PAGE
+  // ============================================================
 
+  // Connect tab switching
+  if (el.connectTabs) {
+    el.connectTabs.addEventListener("click", e => {
+      const tab = e.target.closest(".connect-tab");
+      if (!tab) return;
+      const target = tab.dataset.tab;
+      el.connectTabs.querySelectorAll(".connect-tab").forEach(t => t.classList.toggle("active", t === tab));
+      el.connectKeysTab.hidden = target !== "keys";
+      el.connectLoginTab.hidden = target !== "login";
+    });
+  }
+
+  // Save & connect
+  if (el.saveSettings) {
+    el.saveSettings.addEventListener("click", async () => {
+      state.canvasUrl = el.canvasUrl.value.trim();
+      state.canvasToken = el.canvasToken.value.trim();
+      state.bazaarKey = el.bazaarKey.value.trim();
+
+      if (!state.canvasUrl || !state.canvasToken) {
+        setStatus(el.settingsStatus, "Enter your Canvas URL and access token.", "error");
+        return;
+      }
+      if (!state.bazaarKey) {
+        setStatus(el.settingsStatus, "Enter your BazaarLink API key.", "error");
+        return;
+      }
+
+      if (el.rememberMe.checked) {
+        await persistKeys();
+      }
+
+      setStatus(el.settingsStatus, "Connecting…");
+      el.saveSettings.disabled = true;
+      const originalLabel = el.saveSettings.textContent;
+      el.saveSettings.innerHTML = `<span class="btn-spinner"></span>Connecting…`;
+
+      try {
+        const courses = await api("/api/canvas/courses", {
+          canvasUrl: state.canvasUrl,
+          canvasToken: state.canvasToken
+        });
+        if (courses.length === 0) {
+          setStatus(el.settingsStatus, "No active courses found.", "error");
+          return;
+        }
+        setStatus(el.settingsStatus, `Connected — ${courses.length} course${courses.length === 1 ? "" : "s"} found.`, "ok");
+
+        // Get user name (best effort)
+        api("/api/canvas/me", { canvasUrl: state.canvasUrl, canvasToken: state.canvasToken })
+          .then(me => { if (me.name) state.canvasUserName = me.name; })
+          .catch(() => {});
+
+        // Navigate to model selection
+        Router.navigate("model");
+      } catch (err) {
+        setStatus(el.settingsStatus, err.message, "error");
+      } finally {
+        el.saveSettings.disabled = false;
+        el.saveSettings.textContent = originalLabel;
+      }
+    });
+  }
+
+  // Supabase auth
+  if (el.authSignin) {
+    el.authSignin.addEventListener("click", async () => {
+      const email = el.authEmail.value.trim();
+      const password = el.authPassword.value.trim();
+      if (!email || !password) {
+        setStatus(el.authStatus, "Enter email and password.", "error");
+        return;
+      }
+      setStatus(el.authStatus, "Signing in…");
+      const { user, error } = await window.SupabaseClient.signIn(email, password);
+      if (error) {
+        setStatus(el.authStatus, error.message || "Sign in failed.", "error");
+        return;
+      }
+      setStatus(el.authStatus, "Signed in!", "ok");
+      // Load settings from Supabase
+      const { data: settings } = await window.SupabaseClient.loadSettings();
+      if (settings) {
+        state.canvasUrl = settings.canvas_url || "";
+        state.canvasToken = settings.canvas_token || "";
+        state.bazaarKey = settings.bazaar_key || "";
+        state.model = settings.model || "auto:free";
+        state.systemInstructions = settings.system_instructions || "";
+        state.theme = settings.theme || "light";
+        state.loadingAnimation = settings.loading_animation || "dots";
+        applyTheme(state.theme);
+        await persistKeys();
+        savePrefs();
+      }
+      if (state.canvasUrl && state.canvasToken && state.bazaarKey) {
+        Router.navigate("model");
+      } else {
+        // Switch to keys tab to fill in missing info
+        el.connectTabs.querySelector('[data-tab="keys"]').click();
+        el.canvasUrl.value = state.canvasUrl;
+        el.canvasToken.value = state.canvasToken;
+        el.bazaarKey.value = state.bazaarKey;
+        setStatus(el.settingsStatus, "Signed in. Enter your API keys to continue.", "ok");
+      }
+    });
+  }
+
+  if (el.authSignup) {
+    el.authSignup.addEventListener("click", async () => {
+      const email = el.authEmail.value.trim();
+      const password = el.authPassword.value.trim();
+      if (!email || !password) {
+        setStatus(el.authStatus, "Enter email and password.", "error");
+        return;
+      }
+      if (password.length < 6) {
+        setStatus(el.authStatus, "Password must be at least 6 characters.", "error");
+        return;
+      }
+      setStatus(el.authStatus, "Creating account…");
+      const { user, error } = await window.SupabaseClient.signUp(email, password);
+      if (error) {
+        setStatus(el.authStatus, error.message || "Sign up failed.", "error");
+        return;
+      }
+      setStatus(el.authStatus, "Account created! Check your email to confirm, then sign in.", "ok");
+    });
+  }
+
+  // ============================================================
+  // MODEL SELECTION PAGE
+  // ============================================================
+
+  if (el.modelGrid) {
+    el.modelGrid.addEventListener("click", e => {
+      const option = e.target.closest(".model-option");
+      if (!option) return;
+      el.modelGrid.querySelectorAll(".model-option").forEach(o => o.classList.remove("active"));
+      option.classList.add("active");
+      const model = option.dataset.model;
+      el.customModelField.hidden = model !== "custom";
+      if (model === "custom") el.customModel.focus();
+    });
+  }
+
+  if (el.modelContinue) {
+    el.modelContinue.addEventListener("click", () => {
+      const active = el.modelGrid.querySelector(".model-option.active");
+      if (!active) return;
+      const model = active.dataset.model;
+      if (model === "custom") {
+        const customId = el.customModel.value.trim();
+        if (!customId) {
+          el.customModel.focus();
+          return;
+        }
+        state.model = customId;
+      } else {
+        state.model = model;
+      }
+      // Persist the model choice
+      persistKeys();
+      Router.navigate("chat");
+    });
+  }
+
+  // ============================================================
+  // CHAT PAGE
+  // ============================================================
+
+  // --- Sidebar collapse ---
+  if (el.sidebarCollapseBtn) {
+    el.sidebarCollapseBtn.addEventListener("click", () => {
+      const collapsed = el.appShell.classList.toggle("sidebar-collapsed");
+      localStorage.setItem(SIDEBAR_STORAGE, collapsed ? "1" : "0");
+    });
+  }
+
+  // Restore sidebar state
+  if (localStorage.getItem(SIDEBAR_STORAGE) === "1" && el.appShell) {
+    el.appShell.classList.add("sidebar-collapsed");
+  }
+
+  // --- Panel toggles ---
+  if (el.courseToggle) {
+    el.courseToggle.addEventListener("click", () => togglePanel(el.courseToggle, el.courseBody));
+  }
+  if (el.tabsToggle) {
+    el.tabsToggle.addEventListener("click", () => togglePanel(el.tabsToggle, el.tabsBody));
+  }
+
+  // --- Sidebar nav links ---
+  if (el.sidebarNav) {
+    el.sidebarNav.addEventListener("click", e => {
+      const btn = e.target.closest(".sidebar-nav-btn");
+      if (!btn) return;
+      const route = btn.dataset.route;
+      if (route) Router.navigate(route);
+    });
+  }
+
+  // --- Course select ---
+  if (el.courseSelect) {
+    el.courseSelect.addEventListener("change", () => {
+      state.courseId = el.courseSelect.value;
+      resetContentArea();
+      if (state.courseId) {
+        el.tabsPanel.hidden = false;
+        loadItems(state.activeTab);
+      } else {
+        el.tabsPanel.hidden = true;
+      }
+    });
+  }
+
+  // --- Tabs ---
+  if (el.tabStrip) {
+    el.tabStrip.addEventListener("click", e => {
+      const btn = e.target.closest(".tab");
+      if (!btn) return;
+      state.activeTab = btn.dataset.type;
+      [...el.tabStrip.children].forEach(t => t.classList.toggle("active", t === btn));
+      el.moduleItemList.hidden = true;
+      el.itemList.hidden = false;
+      loadItems(state.activeTab);
+    });
+    el.tabStrip.firstElementChild.classList.add("active");
+  }
+
+  async function loadCourses() {
     try {
       const courses = await api("/api/canvas/courses", {
         canvasUrl: state.canvasUrl,
         canvasToken: state.canvasToken
       });
       populateCourses(courses);
-      setStatus(`Connected — ${courses.length} course${courses.length === 1 ? "" : "s"} found.`, "ok");
-      el.coursePanel.hidden = false;
-      togglePanel(el.settingsToggle, el.settingsBody);
-
-      // Best-effort — falls back to "You" in the chat if this fails.
-      api("/api/canvas/me", { canvasUrl: state.canvasUrl, canvasToken: state.canvasToken })
-        .then(me => {
-          if (me.name) state.canvasUserName = me.name;
-        })
-        .catch(() => {});
     } catch (err) {
-      setStatus(err.message, "error");
-    } finally {
-      el.saveSettings.disabled = false;
-      el.saveSettings.textContent = originalLabel;
+      el.courseSelect.innerHTML = `<option value="">Error loading courses</option>`;
     }
-  });
+  }
 
   function populateCourses(courses) {
     el.courseSelect.innerHTML =
       `<option value="">Select a course…</option>` +
       courses.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
   }
-
-  el.courseSelect.addEventListener("change", () => {
-    state.courseId = el.courseSelect.value;
-    resetContentArea();
-    if (state.courseId) {
-      el.tabsPanel.hidden = false;
-      loadItems(state.activeTab);
-    } else {
-      el.tabsPanel.hidden = true;
-    }
-  });
-
-  // ---------- tabs / item browsing ----------
-  el.tabStrip.addEventListener("click", e => {
-    const btn = e.target.closest(".tab");
-    if (!btn) return;
-    state.activeTab = btn.dataset.type;
-    [...el.tabStrip.children].forEach(t => t.classList.toggle("active", t === btn));
-    el.moduleItemList.hidden = true;
-    el.itemList.hidden = false;
-    loadItems(state.activeTab);
-  });
-  el.tabStrip.firstElementChild.classList.add("active");
 
   async function loadItems(type) {
     el.itemList.innerHTML = `<p class="hint">Loading…</p>`;
@@ -313,7 +584,7 @@
           if (type === "modules") {
             loadModuleItems(item.id, item.name);
           } else {
-            const singular = type.slice(0, -1); // assignments -> assignment, pages -> page, discussions -> discussion
+            const singular = type.slice(0, -1);
             loadContent(singular, item.id);
           }
         });
@@ -362,7 +633,7 @@
             [...el.moduleItemList.children].forEach(r => r.classList.remove("active"));
             row.classList.add("active");
             const idForFetch = item.type === "Page" ? item.page_url : item.content_id;
-            loadContent(item.type.toLowerCase(), idForFetch);
+            loadContent(item.type.toLowerCase(), idForFetch, item.html_url);
           });
         }
         el.moduleItemList.appendChild(row);
@@ -373,25 +644,65 @@
   }
 
   // ---------- content loading ----------
-  async function loadContent(type, itemId) {
+  async function loadContent(type, itemId, htmlUrl) {
     el.contentPreview.hidden = false;
     el.previewTitle.textContent = "Loading…";
     el.previewText.textContent = "";
     el.previewExtra.textContent = "";
     el.mediaWarning.hidden = true;
+    el.previewCanvasLink.hidden = true;
 
     try {
-      const data = await api("/api/canvas/content", {
-        canvasUrl: state.canvasUrl,
-        canvasToken: state.canvasToken,
-        courseId: state.courseId,
-        type,
-        itemId
-      });
+      let data;
+
+      // For file types, try to extract content
+      if (type === "file") {
+        try {
+          data = await api("/api/canvas/file-content", {
+            canvasUrl: state.canvasUrl,
+            canvasToken: state.canvasToken,
+            courseId: state.courseId,
+            fileId: itemId
+          });
+          // Normalize to match content endpoint format
+          data = {
+            title: data.title,
+            body: data.body,
+            extra: data.contentType ? `File type: ${data.contentType}` : "",
+            mediaHints: [],
+            htmlUrl: htmlUrl || data.downloadUrl || ""
+          };
+        } catch {
+          // Fall back to regular content endpoint
+          data = await api("/api/canvas/content", {
+            canvasUrl: state.canvasUrl,
+            canvasToken: state.canvasToken,
+            courseId: state.courseId,
+            type,
+            itemId
+          });
+        }
+      } else {
+        data = await api("/api/canvas/content", {
+          canvasUrl: state.canvasUrl,
+          canvasToken: state.canvasToken,
+          courseId: state.courseId,
+          type,
+          itemId
+        });
+      }
+
       state.currentContext = data;
       el.previewTitle.textContent = data.title || "Untitled";
       el.previewExtra.textContent = data.extra || "";
       el.previewText.textContent = data.body || "";
+
+      // Canvas link
+      const canvasLink = data.htmlUrl || htmlUrl;
+      if (canvasLink) {
+        el.previewCanvasLink.href = canvasLink;
+        el.previewCanvasLink.hidden = false;
+      }
 
       if (data.mediaHints && data.mediaHints.length) {
         el.mediaWarning.hidden = false;
@@ -407,10 +718,12 @@
     }
   }
 
-  el.previewToggle.addEventListener("click", () => {
-    const collapsed = el.previewBody.classList.toggle("collapsed");
-    el.previewChevron.style.transform = collapsed ? "rotate(-90deg)" : "rotate(0deg)";
-  });
+  if (el.previewToggle) {
+    el.previewToggle.addEventListener("click", () => {
+      const collapsed = el.previewBody.classList.toggle("collapsed");
+      el.previewChevron.style.transform = collapsed ? "rotate(-90deg)" : "rotate(0deg)";
+    });
+  }
 
   // ---------- markdown rendering ----------
   function renderMarkdown(text) {
@@ -418,33 +731,47 @@
       const html = marked.parse(text, { breaks: true });
       return DOMPurify.sanitize(html);
     }
-    // Fallback if the CDN scripts didn't load (e.g. offline): show as plain text.
     return escapeHtml(text).replace(/\n/g, "<br>");
   }
 
   // ---------- chat ----------
   function resetContentArea() {
     el.contentPreview.hidden = true;
+    el.previewCanvasLink.hidden = true;
     state.currentContext = null;
     state.messages = [];
     el.chatLog.innerHTML = "";
-    el.emptyState && el.chatLog.appendChild(el.emptyState);
+    if (el.emptyState) el.chatLog.appendChild(el.emptyState);
     el.promptChips.hidden = true;
     setInputEnabled(false);
   }
 
   function startNewConversation(title) {
     state.messages = [];
+    state.currentSessionId = null;
     el.chatLog.innerHTML = "";
     addSystemNote(`Now discussing: ${title || "this page"}`);
     el.promptChips.hidden = false;
     setInputEnabled(true);
     el.chatInput.focus();
+
+    // Create a Supabase chat session (fire and forget)
+    if (window.SupabaseClient && window.SupabaseClient.isConfigured()) {
+      window.SupabaseClient.saveChatSession({
+        title: title || "Untitled",
+        course_id: state.courseId,
+        canvas_item_type: state.activeTab,
+        canvas_item_id: String(state.currentContext?.title || ""),
+        context: state.currentContext
+      }).then(({ data }) => {
+        if (data) state.currentSessionId = data.id;
+      }).catch(() => {});
+    }
   }
 
   function setInputEnabled(enabled) {
     el.chatInput.disabled = !enabled;
-    el.chatSend.disabled = !enabled;
+    el.attachBtn.disabled = !enabled;
   }
 
   function addSystemNote(text) {
@@ -455,7 +782,6 @@
     scrollChatToBottom();
   }
 
-  // role: "user" | "assistant". Returns {block, sender, bubble}.
   function addMessage(role, senderLabel, contentHtml) {
     const block = document.createElement("div");
     block.className = `msg-block ${role}`;
@@ -479,17 +805,146 @@
     el.chatLog.scrollTop = el.chatLog.scrollHeight;
   }
 
+  // ---------- download buttons on code blocks ----------
+  function addDownloadButtons(containerEl) {
+    containerEl.querySelectorAll("pre").forEach(pre => {
+      if (pre.querySelector(".code-download-btn")) return;
+      const btn = document.createElement("button");
+      btn.className = "code-download-btn";
+      btn.textContent = "Download";
+      btn.addEventListener("click", e => {
+        e.stopPropagation();
+        const code = pre.querySelector("code");
+        const text = code ? code.textContent : pre.textContent;
+        const blob = new Blob([text], { type: "text/plain" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "code.txt";
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+      pre.appendChild(btn);
+    });
+  }
+
+  // ---------- flashcard parsing & rendering ----------
+  function parseFlashcards(text) {
+    const cards = [];
+    // Try to parse FRONT: ... | BACK: ... or Q: ... | A: ... patterns
+    const patterns = [
+      /(?:FRONT|Q|Question)\s*:\s*([\s\S]*?)(?:\||(?:BACK|A|Answer)\s*:\s*)([\s\S]*?)(?=\n(?:FRONT|Q|Question)\s*:|$)/gi,
+      /\*\*(?:Front|Q|Question)\*\*\s*:\s*([\s\S]*?)\*\*(?:Back|A|Answer)\*\*\s*:\s*([\s\S]*?)(?=\n\*\*(?:Front|Q|Question)\*\*|$)/gi
+    ];
+
+    for (const pattern of patterns) {
+      let match;
+      while ((match = pattern.exec(text)) !== null) {
+        const front = match[1].trim();
+        const back = match[2].trim();
+        if (front && back) cards.push({ front, back });
+      }
+      if (cards.length > 0) break;
+    }
+
+    // Fallback: try numbered Q/A format
+    if (cards.length === 0) {
+      const lines = text.split("\n");
+      let currentQ = null;
+      for (const line of lines) {
+        const qMatch = line.match(/^\d+\.\s*\*?\*?(?:Q|Question|Front)\*?\*?\s*[:.]?\s*(.*)/i);
+        const aMatch = line.match(/^\s*\*?\*?(?:A|Answer|Back)\*?\*?\s*[:.]?\s*(.*)/i);
+        if (qMatch) {
+          currentQ = qMatch[1].trim();
+        } else if (aMatch && currentQ) {
+          cards.push({ front: currentQ, back: aMatch[1].trim() });
+          currentQ = null;
+        }
+      }
+    }
+
+    return cards;
+  }
+
+  function renderFlashcardDeck(cards, containerEl) {
+    let currentIndex = 0;
+
+    const deck = document.createElement("div");
+    deck.className = "flashcard-deck";
+
+    const cardContainer = document.createElement("div");
+    cardContainer.className = "flashcard-container";
+
+    const card = document.createElement("div");
+    card.className = "flashcard";
+
+    const front = document.createElement("div");
+    front.className = "flashcard-front";
+
+    const back = document.createElement("div");
+    back.className = "flashcard-back";
+
+    card.appendChild(front);
+    card.appendChild(back);
+    cardContainer.appendChild(card);
+    deck.appendChild(cardContainer);
+
+    const nav = document.createElement("div");
+    nav.className = "flashcard-nav";
+
+    const prevBtn = document.createElement("button");
+    prevBtn.className = "flashcard-nav-btn";
+    prevBtn.textContent = "← Prev";
+
+    const counter = document.createElement("span");
+    counter.className = "flashcard-counter";
+
+    const nextBtn = document.createElement("button");
+    nextBtn.className = "flashcard-nav-btn";
+    nextBtn.textContent = "Next →";
+
+    nav.appendChild(prevBtn);
+    nav.appendChild(counter);
+    nav.appendChild(nextBtn);
+    deck.appendChild(nav);
+
+    const hint = document.createElement("div");
+    hint.className = "flashcard-hint";
+    hint.textContent = "Click the card to flip it";
+    deck.appendChild(hint);
+
+    function render() {
+      front.textContent = cards[currentIndex].front;
+      back.textContent = cards[currentIndex].back;
+      counter.textContent = `${currentIndex + 1} / ${cards.length}`;
+      prevBtn.disabled = currentIndex === 0;
+      nextBtn.disabled = currentIndex === cards.length - 1;
+      card.classList.remove("flipped");
+    }
+
+    cardContainer.addEventListener("click", () => card.classList.toggle("flipped"));
+    prevBtn.addEventListener("click", () => { if (currentIndex > 0) { currentIndex--; render(); } });
+    nextBtn.addEventListener("click", () => { if (currentIndex < cards.length - 1) { currentIndex++; render(); } });
+
+    // Keyboard navigation
+    deck.tabIndex = 0;
+    deck.addEventListener("keydown", e => {
+      if (e.key === "ArrowLeft" && currentIndex > 0) { currentIndex--; render(); }
+      if (e.key === "ArrowRight" && currentIndex < cards.length - 1) { currentIndex++; render(); }
+      if (e.key === " " || e.key === "Enter") { e.preventDefault(); card.classList.toggle("flipped"); }
+    });
+
+    render();
+    containerEl.appendChild(deck);
+  }
+
   // ---------- streaming typewriter ----------
-  // Reveals text at a smooth, fast, fixed pace independent of how bursty
-  // the network chunks are — and re-renders Markdown on every tick, so
-  // headings/bold/lists format live as the reply comes in instead of only
-  // once the whole thing has arrived.
   function createTypewriter(bubbleEl) {
     let queue = "";
     let displayed = "";
     let timer = null;
     const CHARS_PER_TICK = 4;
-    const TICK_MS = 8; // ~500 chars/sec
+    const TICK_MS = 8;
 
     function render() {
       bubbleEl.innerHTML = renderMarkdown(displayed) + `<span class="typing-cursor"></span>`;
@@ -513,7 +968,6 @@
         queue += chunk;
         if (!timer) tick();
       },
-      // Resolves once every queued character has been visually revealed.
       waitForDrain() {
         return new Promise(resolve => {
           const check = () => {
@@ -527,9 +981,6 @@
     };
   }
 
-  // Streams the reply and invokes onDelta the moment each chunk is
-  // decoded (not after the whole response finishes), so the caller can
-  // start the typewriter animating in real time.
   async function streamChat(payload, { onDelta, onModel } = {}) {
     const res = await fetch("/api/chat", {
       method: "POST",
@@ -554,7 +1005,7 @@
       buffer += decoder.decode(value, { stream: true });
 
       const lines = buffer.split("\n");
-      buffer = lines.pop(); // keep any partial line for the next chunk
+      buffer = lines.pop();
 
       for (const line of lines) {
         const trimmed = line.trim();
@@ -563,11 +1014,7 @@
         if (!dataStr || dataStr === "[DONE]") continue;
 
         let json;
-        try {
-          json = JSON.parse(dataStr);
-        } catch {
-          continue; // malformed/partial JSON — skip
-        }
+        try { json = JSON.parse(dataStr); } catch { continue; }
 
         if (json.model && !modelName) {
           modelName = json.model;
@@ -587,16 +1034,29 @@
   async function sendMessage(text) {
     if (!text || !state.currentContext) return;
 
-    addMessage("user", state.canvasUserName || "You", escapeHtml(text).replace(/\n/g, "<br>"));
+    // Build display content for user message
+    let displayHtml = escapeHtml(text).replace(/\n/g, "<br>");
+    if (state.pendingAttachments.length > 0) {
+      const attachNames = state.pendingAttachments.map(a => `📎 ${escapeHtml(a.name)}`).join("<br>");
+      displayHtml += `<br><span style="font-size:12px;color:var(--text-faint)">${attachNames}</span>`;
+    }
+
+    addMessage("user", state.canvasUserName || "You", displayHtml);
     state.messages.push({ role: "user", content: text });
     setInputEnabled(false);
 
+    // Prepare attachments for the API
+    const attachments = state.pendingAttachments.map(a => ({
+      name: a.name,
+      type: a.type,
+      content: a.content
+    }));
+    state.pendingAttachments = [];
+    el.attachmentChips.innerHTML = "";
+    el.attachmentChips.hidden = true;
+
     const pendingLabel = formatModelName(state.model);
-    const { bubble, sender } = addMessage(
-      "assistant",
-      pendingLabel,
-      `<span class="typing-dots"><span></span><span></span><span></span></span>`
-    );
+    const { bubble, sender } = addMessage("assistant", pendingLabel, getTypingAnimationHtml());
 
     let typewriter = null;
 
@@ -606,12 +1066,12 @@
           bazaarKey: state.bazaarKey,
           model: state.model,
           context: state.currentContext,
-          messages: state.messages
+          messages: state.messages,
+          systemInstructions: state.systemInstructions || undefined,
+          attachments: attachments.length > 0 ? attachments : undefined
         },
         {
-          onModel: modelId => {
-            sender.textContent = formatModelName(modelId);
-          },
+          onModel: modelId => { sender.textContent = formatModelName(modelId); },
           onDelta: chunk => {
             if (!typewriter) typewriter = createTypewriter(bubble);
             typewriter.push(chunk);
@@ -623,11 +1083,31 @@
         bubble.innerHTML = `<em>No response received.</em>`;
       } else {
         await typewriter.waitForDrain();
-        bubble.innerHTML = renderMarkdown(result.text); // final clean render, cursor removed
+        bubble.innerHTML = renderMarkdown(result.text);
+        addDownloadButtons(bubble);
+
+        // Check for flashcards
+        const cards = parseFlashcards(result.text);
+        if (cards.length >= 2) {
+          renderFlashcardDeck(cards, bubble);
+        }
       }
 
       if (result.text) {
         state.messages.push({ role: "assistant", content: result.text });
+        // Save to Supabase (fire and forget)
+        if (window.SupabaseClient && window.SupabaseClient.isConfigured() && state.currentSessionId) {
+          window.SupabaseClient.saveChatMessage({
+            session_id: state.currentSessionId,
+            role: "user",
+            content: text
+          }).catch(() => {});
+          window.SupabaseClient.saveChatMessage({
+            session_id: state.currentSessionId,
+            role: "assistant",
+            content: result.text
+          }).catch(() => {});
+        }
       }
     } catch (err) {
       bubble.innerHTML = `<em>Error: ${escapeHtml(err.message)}</em>`;
@@ -637,55 +1117,368 @@
     }
   }
 
-  el.chatInput.addEventListener("input", () => {
-    el.chatInput.style.height = "auto";
-    el.chatInput.style.height = Math.min(el.chatInput.scrollHeight, 160) + "px";
-  });
-
-  el.chatForm.addEventListener("submit", e => {
-    e.preventDefault();
-    const text = el.chatInput.value.trim();
-    if (!text) return;
-    el.chatInput.value = "";
-    el.chatInput.style.height = "auto";
-    sendMessage(text);
-  });
-
-  // ---------- quick-prompt chips ----------
-  const QUICK_PROMPTS = {
-    quiz:
-      "Please quiz me on this material. Ask me one question at a time covering the key points, wait for my answer before asking the next question, and check each answer as I give it, explaining anything I get wrong.",
-    summarise: "Please summarise this for me, covering the key points I should know."
-  };
-
-  el.promptChips.addEventListener("click", e => {
-    const btn = e.target.closest(".chip");
-    if (!btn || !state.currentContext) return;
-    const kind = btn.dataset.prompt;
-
-    if (kind === "mark-essay") {
-      // Needs the student to paste their essay in — populate the input
-      // rather than sending immediately.
-      el.chatInput.value =
-        "Please mark my essay below against the marking guide or rubric on this page, and give me feedback on how to improve it.\n\nMy essay:\n";
+  // --- Chat input auto-resize ---
+  if (el.chatInput) {
+    el.chatInput.addEventListener("input", () => {
       el.chatInput.style.height = "auto";
       el.chatInput.style.height = Math.min(el.chatInput.scrollHeight, 160) + "px";
-      el.chatInput.focus();
-      el.chatInput.selectionStart = el.chatInput.selectionEnd = el.chatInput.value.length;
-      return;
-    }
+    });
 
-    const prompt = QUICK_PROMPTS[kind];
-    if (prompt) sendMessage(prompt);
-  });
-
-  function escapeHtml(str) {
-    return String(str).replace(
-      /[&<>"']/g,
-      m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m])
-    );
+    // Enter to send, Shift+Enter for newline
+    el.chatInput.addEventListener("keydown", e => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        el.chatForm.dispatchEvent(new Event("submit"));
+      }
+    });
   }
 
-  // ---------- init ----------
-  loadSaved();
+  if (el.chatForm) {
+    el.chatForm.addEventListener("submit", e => {
+      e.preventDefault();
+      const text = el.chatInput.value.trim();
+      if (!text) return;
+      el.chatInput.value = "";
+      el.chatInput.style.height = "auto";
+      sendMessage(text);
+    });
+  }
+
+  // --- File attachments ---
+  if (el.attachBtn) {
+    el.attachBtn.addEventListener("click", () => el.fileInput.click());
+  }
+
+  if (el.fileInput) {
+    el.fileInput.addEventListener("change", async () => {
+      const files = el.fileInput.files;
+      if (!files || files.length === 0) return;
+
+      for (const file of files) {
+        try {
+          const content = await readFileAsText(file);
+          state.pendingAttachments.push({
+            name: file.name,
+            type: file.type,
+            content: content
+          });
+        } catch {
+          state.pendingAttachments.push({
+            name: file.name,
+            type: file.type,
+            content: `(Could not read file: ${file.name})`
+          });
+        }
+      }
+      renderAttachmentChips();
+      el.fileInput.value = "";
+    });
+  }
+
+  function readFileAsText(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      // Read text files as text, others as data URL
+      if (file.type.startsWith("text/") || file.type === "application/json" ||
+          file.name.endsWith(".md") || file.name.endsWith(".csv")) {
+        reader.readAsText(file);
+      } else {
+        reader.readAsText(file); // best effort
+      }
+    });
+  }
+
+  function renderAttachmentChips() {
+    el.attachmentChips.innerHTML = "";
+    if (state.pendingAttachments.length === 0) {
+      el.attachmentChips.hidden = true;
+      return;
+    }
+    el.attachmentChips.hidden = false;
+    state.pendingAttachments.forEach((att, i) => {
+      const chip = document.createElement("span");
+      chip.className = "attachment-chip";
+      chip.innerHTML = `📎 ${escapeHtml(att.name)} <button class="attachment-chip-remove" data-index="${i}">×</button>`;
+      el.attachmentChips.appendChild(chip);
+    });
+    el.attachmentChips.addEventListener("click", e => {
+      const removeBtn = e.target.closest(".attachment-chip-remove");
+      if (removeBtn) {
+        const idx = parseInt(removeBtn.dataset.index, 10);
+        state.pendingAttachments.splice(idx, 1);
+        renderAttachmentChips();
+      }
+    });
+  }
+
+  // --- Quick-prompt chips ---
+  const QUICK_PROMPTS = {
+    quiz: "Please quiz me on this material. Ask me one question at a time covering the key points, wait for my answer before asking the next question, and check each answer as I give it, explaining anything I get wrong.",
+    summarise: "Please summarise this for me, covering the key points I should know.",
+    flashcards: `Please create flashcards from this material covering the key concepts. Format each flashcard exactly like this, with one per line:
+
+FRONT: [question or term] | BACK: [answer or definition]
+
+Create at least 8 flashcards covering the most important points.`
+  };
+
+  if (el.promptChips) {
+    el.promptChips.addEventListener("click", e => {
+      const btn = e.target.closest(".chip");
+      if (!btn || !state.currentContext) return;
+      const kind = btn.dataset.prompt;
+
+      if (kind === "mark-essay") {
+        el.chatInput.value =
+          "Please mark my essay below against the marking guide or rubric on this page, and give me feedback on how to improve it.\n\nMy essay:\n";
+        el.chatInput.style.height = "auto";
+        el.chatInput.style.height = Math.min(el.chatInput.scrollHeight, 160) + "px";
+        el.chatInput.focus();
+        el.chatInput.selectionStart = el.chatInput.selectionEnd = el.chatInput.value.length;
+        return;
+      }
+
+      const prompt = QUICK_PROMPTS[kind];
+      if (prompt) sendMessage(prompt);
+    });
+  }
+
+  // ============================================================
+  // SETTINGS PAGE
+  // ============================================================
+
+  if (el.settingsBack) {
+    el.settingsBack.addEventListener("click", () => Router.navigate("chat"));
+  }
+
+  // System instructions
+  if (el.systemInstructions) {
+    el.systemInstructions.addEventListener("input", () => {
+      state.systemInstructions = el.systemInstructions.value;
+      savePrefs();
+    });
+  }
+
+  // Theme toggle
+  document.querySelectorAll(".theme-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      applyTheme(btn.dataset.theme);
+      savePrefs();
+    });
+  });
+
+  // Animation picker
+  if (el.animationGrid) {
+    el.animationGrid.addEventListener("click", e => {
+      const option = e.target.closest(".animation-option");
+      if (!option) return;
+      el.animationGrid.querySelectorAll(".animation-option").forEach(o => o.classList.remove("active"));
+      option.classList.add("active");
+      state.loadingAnimation = option.dataset.animation;
+      savePrefs();
+    });
+  }
+
+  // Model select in settings
+  const settingsModelSelect = document.getElementById("settings-model-select");
+  if (settingsModelSelect) {
+    settingsModelSelect.addEventListener("change", () => {
+      const isCustom = settingsModelSelect.value === "custom";
+      el.settingsCustomModelField.hidden = !isCustom;
+      if (isCustom) el.settingsCustomModel.focus();
+    });
+  }
+
+  // Save keys from settings
+  if (el.settingsSaveKeys) {
+    el.settingsSaveKeys.addEventListener("click", async () => {
+      const url = el.settingsCanvasUrl.value.trim();
+      const token = el.settingsCanvasToken.value.trim();
+      const key = el.settingsBazaarKey.value.trim();
+      const modelVal = settingsModelSelect.value;
+      const model = modelVal === "custom" ? el.settingsCustomModel.value.trim() : modelVal;
+
+      if (url) state.canvasUrl = url;
+      if (token) state.canvasToken = token;
+      if (key) state.bazaarKey = key;
+      if (model) state.model = model;
+
+      await persistKeys();
+
+      // Also save to Supabase
+      if (window.SupabaseClient && window.SupabaseClient.isConfigured()) {
+        await window.SupabaseClient.saveSettings({
+          canvas_url: state.canvasUrl,
+          canvas_token: state.canvasToken,
+          bazaar_key: state.bazaarKey,
+          model: state.model
+        }).catch(() => {});
+      }
+
+      setStatus(el.settingsSaveStatus, "Settings saved.", "ok");
+      setTimeout(() => setStatus(el.settingsSaveStatus, "", ""), 3000);
+    });
+  }
+
+  // ============================================================
+  // DOCS PAGE
+  // ============================================================
+
+  if (el.docsBack) {
+    el.docsBack.addEventListener("click", () => Router.navigate("chat"));
+  }
+
+  // ============================================================
+  // LOGOUT PAGE
+  // ============================================================
+
+  if (el.logoutConfirm) {
+    el.logoutConfirm.addEventListener("click", async () => {
+      // Clear localStorage
+      localStorage.removeItem(SETTINGS_STORAGE);
+      localStorage.removeItem(CRYPTO_KEY_STORAGE);
+      localStorage.removeItem(PREFS_STORAGE);
+      localStorage.removeItem(SIDEBAR_STORAGE);
+
+      // Sign out of Supabase
+      if (window.SupabaseClient && window.SupabaseClient.isConfigured()) {
+        await window.SupabaseClient.signOut().catch(() => {});
+      }
+
+      // Reset state
+      state.canvasUrl = "";
+      state.canvasToken = "";
+      state.bazaarKey = "";
+      state.model = "auto:free";
+      state.systemInstructions = "";
+      state.theme = "light";
+      state.loadingAnimation = "dots";
+      applyTheme("light");
+
+      Router.navigate("connect");
+    });
+  }
+
+  if (el.logoutCancel) {
+    el.logoutCancel.addEventListener("click", () => Router.navigate("chat"));
+  }
+
+  // ============================================================
+  // ROUTER SETUP
+  // ============================================================
+
+  function populateSettingsPage() {
+    el.systemInstructions.value = state.systemInstructions;
+    el.settingsCanvasUrl.value = state.canvasUrl;
+    el.settingsCanvasToken.value = state.canvasToken;
+    el.settingsBazaarKey.value = state.bazaarKey;
+
+    // Set model dropdown
+    const known = [...settingsModelSelect.options].some(o => o.value === state.model);
+    if (known) {
+      settingsModelSelect.value = state.model;
+      el.settingsCustomModelField.hidden = true;
+    } else {
+      settingsModelSelect.value = "custom";
+      el.settingsCustomModelField.hidden = false;
+      el.settingsCustomModel.value = state.model;
+    }
+
+    // Animation
+    el.animationGrid.querySelectorAll(".animation-option").forEach(o => {
+      o.classList.toggle("active", o.dataset.animation === state.loadingAnimation);
+    });
+  }
+
+  Router.init({
+    connect: () => {
+      showPage("connect");
+      // If Supabase is not configured, hide the login tab
+      if (!window.SupabaseClient || !window.SupabaseClient.isConfigured()) {
+        el.connectLoginTab.hidden = true;
+        const loginTab = el.connectTabs.querySelector('[data-tab="login"]');
+        if (loginTab) loginTab.style.display = "none";
+      }
+    },
+    model: () => {
+      showPage("model");
+      // Pre-select current model
+      el.modelGrid.querySelectorAll(".model-option").forEach(o => {
+        const isKnown = o.dataset.model === state.model;
+        o.classList.toggle("active", isKnown);
+      });
+      // If custom, show the field
+      const hasKnown = [...el.modelGrid.querySelectorAll(".model-option")].some(
+        o => o.dataset.model === state.model && o.dataset.model !== "custom"
+      );
+      if (!hasKnown) {
+        el.modelGrid.querySelector('[data-model="custom"]').classList.add("active");
+        el.customModelField.hidden = false;
+        el.customModel.value = state.model;
+      }
+    },
+    chat: () => {
+      showPage("chat");
+      // Load courses if not already loaded
+      if (el.courseSelect.options.length <= 1 || el.courseSelect.options[0].textContent === "Loading courses…") {
+        loadCourses();
+      }
+      // Fetch user name (best effort)
+      if (state.canvasUserName === "You") {
+        api("/api/canvas/me", { canvasUrl: state.canvasUrl, canvasToken: state.canvasToken })
+          .then(me => { if (me.name) state.canvasUserName = me.name; })
+          .catch(() => {});
+      }
+    },
+    settings: () => {
+      showPage("settings");
+      populateSettingsPage();
+    },
+    docs: () => {
+      showPage("docs");
+    },
+    logout: () => {
+      showPage("logout");
+    }
+  });
+
+  // Route guards
+  Router.addGuard("chat", () => {
+    if (!state.canvasUrl || !state.canvasToken || !state.bazaarKey) return "connect";
+    return true;
+  });
+  Router.addGuard("model", () => {
+    if (!state.canvasUrl || !state.canvasToken || !state.bazaarKey) return "connect";
+    return true;
+  });
+  Router.addGuard("settings", () => {
+    if (!state.canvasUrl || !state.canvasToken || !state.bazaarKey) return "connect";
+    return true;
+  });
+
+  // ============================================================
+  // INIT
+  // ============================================================
+
+  (async function init() {
+    loadPrefs();
+
+    const hasSavedKeys = await loadSavedKeys();
+
+    if (hasSavedKeys) {
+      // If remember me was on and keys exist, skip to model (or chat if model is set)
+      if (state.model && state.model !== "") {
+        // Don't navigate if already on a valid page from hash
+        const current = Router.current();
+        if (!current || current === "connect") {
+          Router.navigate("chat");
+        }
+      } else {
+        Router.navigate("model");
+      }
+    }
+    // If no saved keys, router will default to connect page
+  })();
 })();

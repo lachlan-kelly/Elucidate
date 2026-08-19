@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
+import pdf from "pdf-parse";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -142,6 +143,7 @@ app.post("/api/canvas/content", async (req, res) => {
     let title = "";
     let rawHtml = "";
     let extra = "";
+    let htmlUrl = "";
 
     const t = String(type || "").toLowerCase();
 
@@ -149,6 +151,7 @@ app.post("/api/canvas/content", async (req, res) => {
       const a = await canvasFetch(canvasUrl, canvasToken, `/courses/${courseId}/assignments/${itemId}`);
       title = a.name;
       rawHtml = a.description;
+      htmlUrl = a.html_url;
       extra = [
         a.due_at ? `Due: ${a.due_at}` : "",
         a.points_possible != null ? `Points possible: ${a.points_possible}` : ""
@@ -159,6 +162,7 @@ app.post("/api/canvas/content", async (req, res) => {
       const d = await canvasFetch(canvasUrl, canvasToken, `/courses/${courseId}/discussion_topics/${itemId}`);
       title = d.title;
       rawHtml = d.message;
+      htmlUrl = d.html_url;
     } else if (t === "page") {
       const p = await canvasFetch(
         canvasUrl,
@@ -167,15 +171,18 @@ app.post("/api/canvas/content", async (req, res) => {
       );
       title = p.title;
       rawHtml = p.body;
+      htmlUrl = p.html_url;
     } else if (t === "quiz") {
       const q = await canvasFetch(canvasUrl, canvasToken, `/courses/${courseId}/quizzes/${itemId}`);
       title = q.title;
       rawHtml = q.description;
+      htmlUrl = q.html_url;
     } else if (t === "file") {
       const f = await canvasFetch(canvasUrl, canvasToken, `/courses/${courseId}/files/${itemId}`);
       title = f.display_name;
       extra = `File type: ${f.content_type}\nDownload link: ${f.url}`;
       rawHtml = "";
+      htmlUrl = f.html_url;
     } else {
       return res.status(400).json({ error: `Unsupported content type: ${type}` });
     }
@@ -183,7 +190,52 @@ app.post("/api/canvas/content", async (req, res) => {
     const body = htmlToText(rawHtml) || "(No text content on this item.)";
     const mediaHints = findMediaHints(rawHtml);
 
-    res.json({ title, body, extra, mediaHints });
+    res.json({ title, body, extra, mediaHints, htmlUrl });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// New endpoint: POST /api/canvas/file-content
+app.post("/api/canvas/file-content", async (req, res) => {
+  const { canvasUrl, canvasToken, courseId, fileId } = req.body;
+  try {
+    const file = await canvasFetch(canvasUrl, canvasToken, `/courses/${courseId}/files/${fileId}`);
+    const downloadResponse = await fetch(file.url, {
+      headers: { Authorization: `Bearer ${canvasToken}` }
+    });
+    
+    if (!downloadResponse.ok) {
+      throw new Error(`Failed to download file: ${downloadResponse.status}`);
+    }
+
+    const contentType = file.content_type;
+    
+    if (contentType === 'application/pdf') {
+      const arrayBuffer = await downloadResponse.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      const pdfData = await pdf(buffer);
+      
+      return res.json({
+        title: file.display_name,
+        body: pdfData.text,
+        contentType: 'application/pdf'
+      });
+    } else if (contentType && contentType.startsWith('text/')) {
+      const textContent = await downloadResponse.text();
+      return res.json({
+        title: file.display_name,
+        body: textContent,
+        contentType
+      });
+    } else {
+      return res.json({
+        title: file.display_name,
+        body: '(Binary file — contents cannot be displayed as text.)',
+        contentType,
+        downloadUrl: file.url
+      });
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -213,10 +265,21 @@ const BAZAARLINK_BASE_URL = "https://bazaarlink.ai/api/v1";
 // from BazaarLink's own streaming response, so the frontend can render
 // tokens as they arrive instead of waiting for the full reply.
 app.post("/api/chat", async (req, res) => {
-  const { bazaarKey, model, context, messages } = req.body;
+  let { bazaarKey, model, context, messages, systemInstructions, attachments } = req.body;
   if (!bazaarKey) return res.status(400).json({ error: "Missing BazaarLink API key" });
   if (!Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: "No messages provided" });
+  }
+
+  if (attachments && Array.isArray(attachments) && attachments.length > 0) {
+    const lastUserMsgIdx = messages.findLastIndex(m => m.role === "user");
+    if (lastUserMsgIdx !== -1) {
+      let appendedContent = "";
+      for (const att of attachments) {
+        appendedContent += `\n\n---ATTACHED FILE: ${att.name}---\n${att.content}\n---END ATTACHED FILE---`;
+      }
+      messages[lastUserMsgIdx].content += appendedContent;
+    }
   }
 
   const mediaNote =
@@ -226,7 +289,13 @@ app.post("/api/chat", async (req, res) => {
         )}\n`
       : "";
 
-  const systemPrompt = `You are a study assistant helping a student with one specific Canvas course page. Base your answers on the material below plus your general knowledge. If the student asks about a video and you only have a link (no transcript), say plainly that you can't watch it and offer to help another way instead of guessing at its content.
+  let systemPrompt = "";
+  
+  if (systemInstructions) {
+    systemPrompt += `The user has provided the following custom instructions that you must follow:\n---\n${systemInstructions}\n---\n\n`;
+  }
+
+  systemPrompt += `You are a study assistant helping a student with one specific Canvas course page. Base your answers on the material below plus your general knowledge. If the student asks about a video and you only have a link (no transcript), say plainly that you can't watch it and offer to help another way instead of guessing at its content.
 
 Style guidelines for every reply:
 - Never use emoji (no colourful pictograms like 📄, ✅, 💡). If a visual marker genuinely helps, use plain typographic symbols instead (e.g. →, •, ✓, ✗), used sparingly.

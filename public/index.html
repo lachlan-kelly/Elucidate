@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Elucidate — Canvas AI Chat</title>
+<link rel="icon" type="image/png" href="logo.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,500;7..72,600;7..72,700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="app-shell" id="app-shell">
+
+  <!-- ============ LEFT: SETTINGS + NAVIGATION ============ -->
+  <aside class="sidebar" id="sidebar">
+    <header class="brand">
+      <img src="logo.png" alt="Elucidate" class="brand-mark" />
+      <div class="brand-text">
+        <h1>Elucidate</h1>
+        <p class="brand-sub">Canvas, read by an AI</p>
+      </div>
+      <button class="sidebar-collapse-btn" id="sidebar-collapse-btn" title="Collapse sidebar" aria-label="Collapse sidebar">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8L10 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </header>
+
+    <div class="sidebar-content" id="sidebar-content">
+      <section class="panel" id="settings-panel">
+        <button class="panel-toggle" id="settings-toggle" aria-expanded="true">
+          <span>01 — Connect</span>
+          <span class="chevron">▾</span>
+        </button>
+        <div class="panel-body" id="settings-body">
+          <label class="field">
+            <span>Canvas URL</span>
+            <input type="text" id="canvas-url" placeholder="https://yourschool.instructure.com" autocomplete="off" />
+          </label>
+          <label class="field">
+            <span>Canvas access token</span>
+            <input type="password" id="canvas-token" placeholder="Generated in Canvas &rarr; Account &rarr; Settings" autocomplete="off" />
+          </label>
+          <label class="field">
+            <span>BazaarLink API key</span>
+            <input type="password" id="bazaar-key" placeholder="sk-bl-..." autocomplete="off" />
+          </label>
+          <label class="field">
+            <span>Model</span>
+            <select id="model-select">
+              <option value="auto:free">Auto (free) — recommended</option>
+              <option value="deepseek/deepseek-v4-flash:free">DeepSeek V4 Flash (free)</option>
+              <option value="custom">Custom model ID…</option>
+            </select>
+          </label>
+          <label class="field" id="custom-model-field" hidden>
+            <span>Custom model ID</span>
+            <input type="text" id="custom-model" placeholder="e.g. a Qwen free model ID from your BazaarLink dashboard" autocomplete="off" />
+          </label>
+          <button class="btn-primary" id="save-settings">Save & connect</button>
+          <p class="hint" id="settings-status"></p>
+        </div>
+      </section>
+
+      <section class="panel" id="course-panel" hidden>
+        <button class="panel-toggle" aria-expanded="true">
+          <span>02 — Course</span>
+        </button>
+        <div class="panel-body">
+          <select id="course-select">
+            <option value="">Loading courses…</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="panel" id="tabs-panel" hidden>
+        <button class="panel-toggle" aria-expanded="true">
+          <span>03 — Where</span>
+        </button>
+        <div class="panel-body">
+          <div class="tab-strip" id="tab-strip">
+            <button class="tab" data-type="modules">Modules</button>
+            <button class="tab" data-type="assignments">Assignments</button>
+            <button class="tab" data-type="discussions">Discussions</button>
+            <button class="tab" data-type="pages">Pages</button>
+          </div>
+          <div class="item-list" id="item-list"></div>
+          <div class="item-list" id="module-item-list" hidden></div>
+        </div>
+      </section>
+    </div>
+  </aside>
+
+  <!-- ============ RIGHT: CONTENT + CHAT ============ -->
+  <main class="main">
+
+    <section class="content-preview" id="content-preview" hidden>
+      <button class="preview-toggle" id="preview-toggle">
+        <div>
+          <span class="preview-label">Reading</span>
+          <h2 id="preview-title">—</h2>
+        </div>
+        <span class="chevron" id="preview-chevron">▾</span>
+      </button>
+      <div class="preview-body" id="preview-body">
+        <p class="preview-extra" id="preview-extra"></p>
+        <p class="media-warning" id="media-warning" hidden></p>
+        <pre id="preview-text"></pre>
+      </div>
+    </section>
+
+    <section class="chat" id="chat-section">
+      <div class="chat-log" id="chat-log">
+        <div class="empty-state" id="empty-state">
+          <img src="logo.png" alt="" class="empty-mark" />
+          <h2>Pick a page to start</h2>
+          <p>Connect Canvas on the left, choose a course, then select a module item, assignment, discussion, or page. Its content loads into this chat automatically.</p>
+        </div>
+      </div>
+      <div class="prompt-chips" id="prompt-chips" hidden>
+        <button type="button" class="chip" data-prompt="quiz">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M5 6a3 3 0 1 1 4 2.83c-.6.2-1 .78-1 1.42v.25" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="8" cy="12.5" r="0.9" fill="currentColor"/></svg>
+          Make me a quiz
+        </button>
+        <button type="button" class="chip" data-prompt="summarise">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="3" y="2.5" width="10" height="11" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M5.5 6h5M5.5 8.5h5M5.5 11h3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          Summarise my assignment
+        </button>
+        <button type="button" class="chip" data-prompt="mark-essay">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Mark my essay
+        </button>
+      </div>
+      <form class="chat-input-row" id="chat-form">
+        <textarea id="chat-input" placeholder="Ask about this page…" rows="1" disabled></textarea>
+        <button type="submit" id="chat-send" disabled>Send</button>
+      </form>
+    </section>
+
+  </main>
+</div>
+
+<!-- Markdown rendering (assistant replies) + sanitizer, loaded in the browser -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "name": "elucidate",
+  "version": "1.0.0",
+  "description": "Pick a Canvas course and page, then chat with an AI about its content.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "cors": "^2.8.5"
+  }
+}

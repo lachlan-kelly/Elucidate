@@ -74,7 +74,7 @@
     // Settings/prefs
     systemInstructions: "",
     theme: "light",
-    loadingAnimation: "dots",
+    loadingAnimation: "dots", // 'dots', 'orbit', 'cubes', 'pulse'
     // File attachments for current message
     pendingAttachments: [],
     // Current chat session ID (supabase)
@@ -84,7 +84,6 @@
   // ---------- pages ----------
   const pages = {
     connect: document.getElementById("page-connect"),
-    model: document.getElementById("page-model"),
     chat: document.getElementById("page-chat"),
     settings: document.getElementById("page-settings"),
     docs: document.getElementById("page-docs"),
@@ -159,12 +158,6 @@
     authSignup: document.getElementById("auth-signup"),
     authStatus: document.getElementById("auth-status"),
 
-    // Model page
-    modelGrid: document.getElementById("model-grid"),
-    customModelField: document.getElementById("custom-model-field"),
-    customModel: document.getElementById("custom-model"),
-    modelContinue: document.getElementById("model-continue"),
-
     // Settings page
     settingsBack: document.getElementById("settings-back"),
     systemInstructions: document.getElementById("system-instructions"),
@@ -211,7 +204,7 @@
       canvasUrl: state.canvasUrl,
       canvasToken: state.canvasToken,
       bazaarKey: state.bazaarKey,
-      model: state.model
+      model: state.model || "auto:free"
     });
     localStorage.setItem(SETTINGS_STORAGE, cipher);
   }
@@ -235,7 +228,7 @@
       theme: state.theme,
       loadingAnimation: state.loadingAnimation
     }));
-    // Also try saving to Supabase (fire and forget)
+    // Also save to Supabase if configured
     if (window.SupabaseClient && window.SupabaseClient.isConfigured()) {
       window.SupabaseClient.saveSettings({
         system_instructions: state.systemInstructions,
@@ -248,7 +241,6 @@
   function applyTheme(theme) {
     state.theme = theme;
     document.documentElement.setAttribute("data-theme", theme);
-    // Update theme button states
     document.querySelectorAll(".theme-btn").forEach(btn => {
       btn.classList.toggle("active", btn.dataset.theme === theme);
     });
@@ -266,9 +258,10 @@
     return data;
   }
 
-  function setStatus(el, msg, kind) {
-    el.textContent = msg;
-    el.className = "hint" + (kind ? ` ${kind}` : "");
+  function setStatus(elRef, msg, kind) {
+    if (!elRef) return;
+    elRef.textContent = msg;
+    elRef.className = "hint" + (kind ? ` ${kind}` : "");
   }
 
   function togglePanel(toggleBtn, bodyEl) {
@@ -293,16 +286,17 @@
     );
   }
 
-  // ---------- typing animation HTML ----------
+  // ---------- 4 custom typing animations ----------
   function getTypingAnimationHtml() {
     switch (state.loadingAnimation) {
-      case "bar":
-        return `<span class="typing-bar"></span>`;
-      case "spinner":
-        return `<span class="typing-spinner"></span>`;
-      case "waveform":
-        return `<span class="typing-waveform"><span></span><span></span><span></span><span></span><span></span></span>`;
-      default: // dots
+      case "orbit":
+        return `<span class="typing-orbit"><span class="orbit-outer"></span><span class="orbit-inner"></span></span>`;
+      case "cubes":
+        return `<span class="typing-cubes"><span></span><span></span><span></span><span></span></span>`;
+      case "pulse":
+        return `<span class="typing-pulse"><span></span><span></span><span></span></span>`;
+      case "dots":
+      default:
         return `<span class="typing-dots"><span></span><span></span><span></span></span>`;
     }
   }
@@ -311,7 +305,6 @@
   // CONNECT PAGE
   // ============================================================
 
-  // Connect tab switching
   if (el.connectTabs) {
     el.connectTabs.addEventListener("click", e => {
       const tab = e.target.closest(".connect-tab");
@@ -329,6 +322,7 @@
       state.canvasUrl = el.canvasUrl.value.trim();
       state.canvasToken = el.canvasToken.value.trim();
       state.bazaarKey = el.bazaarKey.value.trim();
+      state.model = state.model || "auto:free";
 
       if (!state.canvasUrl || !state.canvasToken) {
         setStatus(el.settingsStatus, "Enter your Canvas URL and access token.", "error");
@@ -364,8 +358,8 @@
           .then(me => { if (me.name) state.canvasUserName = me.name; })
           .catch(() => {});
 
-        // Navigate to model selection
-        Router.navigate("model");
+        // Directly navigate to chat
+        Router.navigate("chat");
       } catch (err) {
         setStatus(el.settingsStatus, err.message, "error");
       } finally {
@@ -406,9 +400,8 @@
         savePrefs();
       }
       if (state.canvasUrl && state.canvasToken && state.bazaarKey) {
-        Router.navigate("model");
+        Router.navigate("chat");
       } else {
-        // Switch to keys tab to fill in missing info
         el.connectTabs.querySelector('[data-tab="keys"]').click();
         el.canvasUrl.value = state.canvasUrl;
         el.canvasToken.value = state.canvasToken;
@@ -441,47 +434,10 @@
   }
 
   // ============================================================
-  // MODEL SELECTION PAGE
-  // ============================================================
-
-  if (el.modelGrid) {
-    el.modelGrid.addEventListener("click", e => {
-      const option = e.target.closest(".model-option");
-      if (!option) return;
-      el.modelGrid.querySelectorAll(".model-option").forEach(o => o.classList.remove("active"));
-      option.classList.add("active");
-      const model = option.dataset.model;
-      el.customModelField.hidden = model !== "custom";
-      if (model === "custom") el.customModel.focus();
-    });
-  }
-
-  if (el.modelContinue) {
-    el.modelContinue.addEventListener("click", () => {
-      const active = el.modelGrid.querySelector(".model-option.active");
-      if (!active) return;
-      const model = active.dataset.model;
-      if (model === "custom") {
-        const customId = el.customModel.value.trim();
-        if (!customId) {
-          el.customModel.focus();
-          return;
-        }
-        state.model = customId;
-      } else {
-        state.model = model;
-      }
-      // Persist the model choice
-      persistKeys();
-      Router.navigate("chat");
-    });
-  }
-
-  // ============================================================
   // CHAT PAGE
   // ============================================================
 
-  // --- Sidebar collapse ---
+  // Sidebar collapse
   if (el.sidebarCollapseBtn) {
     el.sidebarCollapseBtn.addEventListener("click", () => {
       const collapsed = el.appShell.classList.toggle("sidebar-collapsed");
@@ -494,7 +450,7 @@
     el.appShell.classList.add("sidebar-collapsed");
   }
 
-  // --- Panel toggles ---
+  // Panel toggles
   if (el.courseToggle) {
     el.courseToggle.addEventListener("click", () => togglePanel(el.courseToggle, el.courseBody));
   }
@@ -502,7 +458,7 @@
     el.tabsToggle.addEventListener("click", () => togglePanel(el.tabsToggle, el.tabsBody));
   }
 
-  // --- Sidebar nav links ---
+  // Sidebar nav links
   if (el.sidebarNav) {
     el.sidebarNav.addEventListener("click", e => {
       const btn = e.target.closest(".sidebar-nav-btn");
@@ -512,7 +468,7 @@
     });
   }
 
-  // --- Course select ---
+  // Course select
   if (el.courseSelect) {
     el.courseSelect.addEventListener("change", () => {
       state.courseId = el.courseSelect.value;
@@ -526,7 +482,7 @@
     });
   }
 
-  // --- Tabs ---
+  // Tabs
   if (el.tabStrip) {
     el.tabStrip.addEventListener("click", e => {
       const btn = e.target.closest(".tab");
@@ -655,7 +611,6 @@
     try {
       let data;
 
-      // For file types, try to extract content
       if (type === "file") {
         try {
           data = await api("/api/canvas/file-content", {
@@ -664,7 +619,6 @@
             courseId: state.courseId,
             fileId: itemId
           });
-          // Normalize to match content endpoint format
           data = {
             title: data.title,
             body: data.body,
@@ -673,7 +627,6 @@
             htmlUrl: htmlUrl || data.downloadUrl || ""
           };
         } catch {
-          // Fall back to regular content endpoint
           data = await api("/api/canvas/content", {
             canvasUrl: state.canvasUrl,
             canvasToken: state.canvasToken,
@@ -697,7 +650,7 @@
       el.previewExtra.textContent = data.extra || "";
       el.previewText.textContent = data.body || "";
 
-      // Canvas link
+      // Canvas external link
       const canvasLink = data.htmlUrl || htmlUrl;
       if (canvasLink) {
         el.previewCanvasLink.href = canvasLink;
@@ -831,7 +784,6 @@
   // ---------- flashcard parsing & rendering ----------
   function parseFlashcards(text) {
     const cards = [];
-    // Try to parse FRONT: ... | BACK: ... or Q: ... | A: ... patterns
     const patterns = [
       /(?:FRONT|Q|Question)\s*:\s*([\s\S]*?)(?:\||(?:BACK|A|Answer)\s*:\s*)([\s\S]*?)(?=\n(?:FRONT|Q|Question)\s*:|$)/gi,
       /\*\*(?:Front|Q|Question)\*\*\s*:\s*([\s\S]*?)\*\*(?:Back|A|Answer)\*\*\s*:\s*([\s\S]*?)(?=\n\*\*(?:Front|Q|Question)\*\*|$)/gi
@@ -847,7 +799,6 @@
       if (cards.length > 0) break;
     }
 
-    // Fallback: try numbered Q/A format
     if (cards.length === 0) {
       const lines = text.split("\n");
       let currentQ = null;
@@ -926,7 +877,6 @@
     prevBtn.addEventListener("click", () => { if (currentIndex > 0) { currentIndex--; render(); } });
     nextBtn.addEventListener("click", () => { if (currentIndex < cards.length - 1) { currentIndex++; render(); } });
 
-    // Keyboard navigation
     deck.tabIndex = 0;
     deck.addEventListener("keydown", e => {
       if (e.key === "ArrowLeft" && currentIndex > 0) { currentIndex--; render(); }
@@ -1034,7 +984,6 @@
   async function sendMessage(text) {
     if (!text || !state.currentContext) return;
 
-    // Build display content for user message
     let displayHtml = escapeHtml(text).replace(/\n/g, "<br>");
     if (state.pendingAttachments.length > 0) {
       const attachNames = state.pendingAttachments.map(a => `📎 ${escapeHtml(a.name)}`).join("<br>");
@@ -1045,7 +994,6 @@
     state.messages.push({ role: "user", content: text });
     setInputEnabled(false);
 
-    // Prepare attachments for the API
     const attachments = state.pendingAttachments.map(a => ({
       name: a.name,
       type: a.type,
@@ -1064,7 +1012,7 @@
       const result = await streamChat(
         {
           bazaarKey: state.bazaarKey,
-          model: state.model,
+          model: state.model || "auto:free",
           context: state.currentContext,
           messages: state.messages,
           systemInstructions: state.systemInstructions || undefined,
@@ -1086,7 +1034,6 @@
         bubble.innerHTML = renderMarkdown(result.text);
         addDownloadButtons(bubble);
 
-        // Check for flashcards
         const cards = parseFlashcards(result.text);
         if (cards.length >= 2) {
           renderFlashcardDeck(cards, bubble);
@@ -1095,7 +1042,6 @@
 
       if (result.text) {
         state.messages.push({ role: "assistant", content: result.text });
-        // Save to Supabase (fire and forget)
         if (window.SupabaseClient && window.SupabaseClient.isConfigured() && state.currentSessionId) {
           window.SupabaseClient.saveChatMessage({
             session_id: state.currentSessionId,
@@ -1117,14 +1063,13 @@
     }
   }
 
-  // --- Chat input auto-resize ---
+  // --- Chat input auto-resize & key handling ---
   if (el.chatInput) {
     el.chatInput.addEventListener("input", () => {
       el.chatInput.style.height = "auto";
       el.chatInput.style.height = Math.min(el.chatInput.scrollHeight, 160) + "px";
     });
 
-    // Enter to send, Shift+Enter for newline
     el.chatInput.addEventListener("keydown", e => {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
@@ -1180,12 +1125,11 @@
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result);
       reader.onerror = reject;
-      // Read text files as text, others as data URL
       if (file.type.startsWith("text/") || file.type === "application/json" ||
           file.name.endsWith(".md") || file.name.endsWith(".csv")) {
         reader.readAsText(file);
       } else {
-        reader.readAsText(file); // best effort
+        reader.readAsText(file);
       }
     });
   }
@@ -1336,18 +1280,15 @@ Create at least 8 flashcards covering the most important points.`
 
   if (el.logoutConfirm) {
     el.logoutConfirm.addEventListener("click", async () => {
-      // Clear localStorage
       localStorage.removeItem(SETTINGS_STORAGE);
       localStorage.removeItem(CRYPTO_KEY_STORAGE);
       localStorage.removeItem(PREFS_STORAGE);
       localStorage.removeItem(SIDEBAR_STORAGE);
 
-      // Sign out of Supabase
       if (window.SupabaseClient && window.SupabaseClient.isConfigured()) {
         await window.SupabaseClient.signOut().catch(() => {});
       }
 
-      // Reset state
       state.canvasUrl = "";
       state.canvasToken = "";
       state.bazaarKey = "";
@@ -1370,12 +1311,11 @@ Create at least 8 flashcards covering the most important points.`
   // ============================================================
 
   function populateSettingsPage() {
-    el.systemInstructions.value = state.systemInstructions;
-    el.settingsCanvasUrl.value = state.canvasUrl;
-    el.settingsCanvasToken.value = state.canvasToken;
-    el.settingsBazaarKey.value = state.bazaarKey;
+    el.systemInstructions.value = state.systemInstructions || "";
+    el.settingsCanvasUrl.value = state.canvasUrl || "";
+    el.settingsCanvasToken.value = state.canvasToken || "";
+    el.settingsBazaarKey.value = state.bazaarKey || "";
 
-    // Set model dropdown
     const known = [...settingsModelSelect.options].some(o => o.value === state.model);
     if (known) {
       settingsModelSelect.value = state.model;
@@ -1383,49 +1323,28 @@ Create at least 8 flashcards covering the most important points.`
     } else {
       settingsModelSelect.value = "custom";
       el.settingsCustomModelField.hidden = false;
-      el.settingsCustomModel.value = state.model;
+      el.settingsCustomModel.value = state.model || "";
     }
 
-    // Animation
     el.animationGrid.querySelectorAll(".animation-option").forEach(o => {
-      o.classList.toggle("active", o.dataset.animation === state.loadingAnimation);
+      o.classList.toggle("active", o.dataset.animation === (state.loadingAnimation || "dots"));
     });
   }
 
   Router.init({
     connect: () => {
       showPage("connect");
-      // If Supabase is not configured, hide the login tab
       if (!window.SupabaseClient || !window.SupabaseClient.isConfigured()) {
         el.connectLoginTab.hidden = true;
-        const loginTab = el.connectTabs.querySelector('[data-tab="login"]');
+        const loginTab = el.connectTabs ? el.connectTabs.querySelector('[data-tab="login"]') : null;
         if (loginTab) loginTab.style.display = "none";
-      }
-    },
-    model: () => {
-      showPage("model");
-      // Pre-select current model
-      el.modelGrid.querySelectorAll(".model-option").forEach(o => {
-        const isKnown = o.dataset.model === state.model;
-        o.classList.toggle("active", isKnown);
-      });
-      // If custom, show the field
-      const hasKnown = [...el.modelGrid.querySelectorAll(".model-option")].some(
-        o => o.dataset.model === state.model && o.dataset.model !== "custom"
-      );
-      if (!hasKnown) {
-        el.modelGrid.querySelector('[data-model="custom"]').classList.add("active");
-        el.customModelField.hidden = false;
-        el.customModel.value = state.model;
       }
     },
     chat: () => {
       showPage("chat");
-      // Load courses if not already loaded
       if (el.courseSelect.options.length <= 1 || el.courseSelect.options[0].textContent === "Loading courses…") {
         loadCourses();
       }
-      // Fetch user name (best effort)
       if (state.canvasUserName === "You") {
         api("/api/canvas/me", { canvasUrl: state.canvasUrl, canvasToken: state.canvasToken })
           .then(me => { if (me.name) state.canvasUserName = me.name; })
@@ -1449,10 +1368,6 @@ Create at least 8 flashcards covering the most important points.`
     if (!state.canvasUrl || !state.canvasToken || !state.bazaarKey) return "connect";
     return true;
   });
-  Router.addGuard("model", () => {
-    if (!state.canvasUrl || !state.canvasToken || !state.bazaarKey) return "connect";
-    return true;
-  });
   Router.addGuard("settings", () => {
     if (!state.canvasUrl || !state.canvasToken || !state.bazaarKey) return "connect";
     return true;
@@ -1468,17 +1383,10 @@ Create at least 8 flashcards covering the most important points.`
     const hasSavedKeys = await loadSavedKeys();
 
     if (hasSavedKeys) {
-      // If remember me was on and keys exist, skip to model (or chat if model is set)
-      if (state.model && state.model !== "") {
-        // Don't navigate if already on a valid page from hash
-        const current = Router.current();
-        if (!current || current === "connect") {
-          Router.navigate("chat");
-        }
-      } else {
-        Router.navigate("model");
+      const current = Router.current();
+      if (!current || current === "connect") {
+        Router.navigate("chat");
       }
     }
-    // If no saved keys, router will default to connect page
   })();
 })();

@@ -80,10 +80,13 @@
 
 html, body {
   margin: 0;
+  padding: 0;
+  width: 100%;
   height: 100%;
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-body);
+  overflow-x: hidden;
 }
 
 ::selection { background: var(--accent-soft); color: var(--accent-text); }
@@ -94,14 +97,33 @@ button, input, select, textarea {
 }
 
 /* ---------- page system ---------- */
-.page { display: none; height: 100vh; }
-.page[hidden] { display: none; }
-.page.active { display: flex; }
+.page {
+  display: none;
+  width: 100%;
+  min-height: 100vh;
+  height: 100vh;
+}
+.page[hidden] { display: none !important; }
+.page.active {
+  display: flex;
+  width: 100%;
+}
+
+.page-chat {
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+}
+.page-chat.active {
+  display: flex;
+  width: 100%;
+}
 
 .page-center {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
   flex: 1;
   padding: 30px;
 }
@@ -222,72 +244,13 @@ button, input, select, textarea {
 }
 .btn-danger:hover { filter: brightness(1.08); }
 
-/* ---------- model selection page ---------- */
-.model-card {
-  width: 100%;
-  max-width: 600px;
-  background: var(--surface);
-  border-radius: var(--radius-lg);
-  padding: 44px 36px;
-  box-shadow: var(--shadow-lg);
-  text-align: center;
-}
-.model-card h1 {
-  font-weight: 700;
-  font-size: 26px;
-  margin: 0 0 4px;
-}
-
-.model-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  margin: 24px 0;
-  text-align: left;
-}
-
-.model-option {
-  background: var(--bg);
-  border: 2px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 18px 16px;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-  text-align: left;
-}
-.model-option:hover { border-color: var(--accent); }
-.model-option.active {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.model-option-icon {
-  font-size: 24px;
-  margin-bottom: 8px;
-}
-.model-option h3 {
-  font-size: 14px;
-  font-weight: 600;
-  margin: 0 0 4px;
-}
-.model-option p {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin: 0;
-  line-height: 1.4;
-}
-
-.btn-wide { width: 100%; margin-top: 8px; }
-
-@media (max-width: 600px) {
-  .model-grid { grid-template-columns: 1fr; }
-}
-
 /* ---------- shell (chat page) ---------- */
 .app-shell {
   display: grid;
   grid-template-columns: 300px 1fr;
+  width: 100%;
   height: 100vh;
+  flex: 1;
   transition: grid-template-columns 0.22s ease;
 }
 
@@ -374,6 +337,7 @@ button, input, select, textarea {
   gap: 10px;
   margin-bottom: 16px;
   align-items: center;
+  width: 100%;
 }
 
 .sidebar-collapsed .brand-text {
@@ -396,20 +360,38 @@ button, input, select, textarea {
 
 .sidebar-collapsed .sidebar-collapse-btn svg { transform: rotate(180deg); }
 
+/* Collapsed sidebar bottom navigation with proper 40px square hover pills */
 .sidebar-collapsed .sidebar-nav {
   flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  gap: 10px;
   border-top: none;
-  padding-top: 10px;
+  padding-top: 12px;
+  width: 100%;
 }
+
 .sidebar-collapsed .sidebar-nav-label {
   display: none;
 }
+
 .sidebar-collapsed .sidebar-nav-btn {
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
+  min-height: 42px;
+  max-height: 42px;
   padding: 0;
+  display: flex;
+  align-items: center;
   justify-content: center;
+  border-radius: var(--radius-sm);
+  flex: none;
+  margin: 0 auto;
+}
+.sidebar-collapsed .sidebar-nav-btn svg {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  flex-shrink: 0;
 }
 
 .sidebar-content {
@@ -419,7 +401,7 @@ button, input, select, textarea {
   min-height: 0;
 }
 
-/* Sidebar bottom nav */
+/* Sidebar bottom nav (expanded) */
 .sidebar-nav {
   display: flex;
   gap: 4px;
@@ -609,16 +591,19 @@ button, input, select, textarea {
 }
 .back-row:hover { color: var(--accent-text); }
 
-/* ---------- main ---------- */
+/* ---------- main (content + chat) ---------- */
 .main {
+  width: 100%;
   display: flex;
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+  min-width: 0;
 }
 @media (max-width: 860px) { .main { height: auto; } }
 
 .content-preview {
+  width: 100%;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
   flex-shrink: 0;
@@ -700,8 +685,9 @@ button, input, select, textarea {
   margin: 0;
 }
 
-/* ---------- chat ---------- */
+/* ---------- chat area ---------- */
 .chat {
+  width: 100%;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -709,6 +695,7 @@ button, input, select, textarea {
 }
 
 .chat-log {
+  width: 100%;
   flex: 1;
   overflow-y: auto;
   padding: 30px;
@@ -739,7 +726,7 @@ button, input, select, textarea {
 .msg-block {
   display: flex;
   flex-direction: column;
-  max-width: 72%;
+  max-width: 78%;
 }
 .msg-block.user { align-self: flex-end; align-items: flex-end; }
 .msg-block.assistant { align-self: flex-start; align-items: flex-start; }
@@ -778,90 +765,139 @@ button, input, select, textarea {
 }
 .msg.pending { color: var(--text-faint); }
 
-/* ---------- typing animations ---------- */
+/* ============================================================ */
+/* ---------- 4 CUSTOM TYPING ANIMATIONS ----------             */
+/* ============================================================ */
 
-/* Dots (default) */
+/* 1. Wave Dots (Iconscout 4347818 style) */
 .typing-dots {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 0;
+  gap: 5px;
+  padding: 4px 2px;
 }
 .typing-dots span {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: var(--text-faint);
-  animation: typing-bounce 1.2s infinite ease-in-out both;
-}
-.typing-dots span:nth-child(2) { animation-delay: 0.15s; }
-.typing-dots span:nth-child(3) { animation-delay: 0.3s; }
-@keyframes typing-bounce {
-  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
-  40% { transform: scale(1); opacity: 1; }
-}
-
-/* Bar */
-.typing-bar {
-  display: inline-block;
-  width: 60px;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--text-faint);
-  position: relative;
-  overflow: hidden;
-}
-.typing-bar::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -60px;
-  width: 60px;
-  height: 100%;
   background: var(--accent);
-  border-radius: 2px;
-  animation: bar-slide 1.2s infinite ease-in-out;
+  animation: wave-dots-bounce 1.3s infinite ease-in-out both;
 }
-@keyframes bar-slide {
-  0% { left: -60px; }
-  50% { left: 60px; }
-  100% { left: -60px; }
-}
-
-/* Spinner */
-.typing-spinner {
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  border: 2px solid var(--border);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
+.typing-dots span:nth-child(1) { animation-delay: -0.32s; }
+.typing-dots span:nth-child(2) { animation-delay: -0.16s; }
+.typing-dots span:nth-child(3) { animation-delay: 0s; }
+@keyframes wave-dots-bounce {
+  0%, 80%, 100% {
+    transform: translateY(0) scale(0.7);
+    opacity: 0.45;
+  }
+  40% {
+    transform: translateY(-8px) scale(1.15);
+    opacity: 1;
+  }
 }
 
-/* Waveform */
-.typing-waveform {
+/* 2. Orbit Rings (Iconscout 3469029 style) */
+.typing-orbit {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding: 3px 0;
-  height: 18px;
+  justify-content: center;
+  position: relative;
+  width: 22px;
+  height: 22px;
+  padding: 2px;
 }
-.typing-waveform span {
-  width: 3px;
-  height: 8px;
-  border-radius: 1.5px;
-  background: var(--text-faint);
-  animation: wave 1s infinite ease-in-out;
+.typing-orbit .orbit-outer {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-top-color: var(--accent);
+  border-right-color: var(--accent);
+  animation: orbit-spin 1s cubic-bezier(0.68, -0.55, 0.27, 1.55) infinite;
 }
-.typing-waveform span:nth-child(1) { animation-delay: 0s; }
-.typing-waveform span:nth-child(2) { animation-delay: 0.1s; }
-.typing-waveform span:nth-child(3) { animation-delay: 0.2s; }
-.typing-waveform span:nth-child(4) { animation-delay: 0.3s; }
-.typing-waveform span:nth-child(5) { animation-delay: 0.4s; }
-@keyframes wave {
-  0%, 100% { height: 4px; opacity: 0.4; }
-  50% { height: 16px; opacity: 1; }
+.typing-orbit .orbit-inner {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-bottom-color: var(--accent-text);
+  border-left-color: var(--accent-text);
+  animation: orbit-spin-reverse 0.8s linear infinite;
+}
+@keyframes orbit-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+@keyframes orbit-spin-reverse {
+  0% { transform: rotate(360deg); }
+  100% { transform: rotate(0deg); }
+}
+
+/* 3. Grid Cubes (Iconscout 3469036 style) */
+.typing-cubes {
+  display: inline-grid;
+  grid-template-columns: repeat(2, 6px);
+  gap: 3px;
+  padding: 4px;
+}
+.typing-cubes span {
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+  border-radius: 2px;
+  animation: cube-flip 1.4s infinite ease-in-out;
+}
+.typing-cubes span:nth-child(1) { animation-delay: 0.1s; }
+.typing-cubes span:nth-child(2) { animation-delay: 0.25s; }
+.typing-cubes span:nth-child(4) { animation-delay: 0.4s; }
+.typing-cubes span:nth-child(3) { animation-delay: 0.55s; }
+@keyframes cube-flip {
+  0%, 70%, 100% {
+    transform: scale3D(1, 1, 1);
+    opacity: 0.4;
+  }
+  35% {
+    transform: scale3D(0, 0, 1);
+    opacity: 0.1;
+  }
+}
+
+/* 4. Liquid Pulse (Iconscout 9601675 style) */
+.typing-pulse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: 22px;
+  height: 22px;
+}
+.typing-pulse span {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 50%;
+  opacity: 0.6;
+  animation: pulse-liquid 1.6s cubic-bezier(0, 0.2, 0.8, 1) infinite;
+}
+.typing-pulse span:nth-child(2) {
+  animation-delay: -0.5s;
+}
+.typing-pulse span:nth-child(3) {
+  animation-delay: -1s;
+}
+@keyframes pulse-liquid {
+  0% {
+    transform: scale(0.15);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.1);
+    opacity: 0;
+  }
 }
 
 /* blinking cursor */
@@ -964,6 +1000,7 @@ button, input, select, textarea {
 
 /* prompt chips */
 .prompt-chips {
+  width: 100%;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -996,6 +1033,7 @@ button, input, select, textarea {
 
 /* ---------- chat input ---------- */
 .chat-input-row {
+  width: 100%;
   display: flex;
   align-items: flex-end;
   gap: 10px;
@@ -1280,7 +1318,7 @@ button, input, select, textarea {
   color: var(--accent-text);
 }
 .animation-preview {
-  height: 24px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;

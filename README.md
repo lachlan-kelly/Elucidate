@@ -14,8 +14,8 @@ QOL in schoolwork.
 
 ## Setup
 
-1. Get a [Canvas](https://www.instructure.com/) access token, click [here](#Getting your Canvas access token) for instructions
-2. Get a BazaarLink API key, click [here](#Getting your BazaarLink API key) for instructions
+1. Get a [Canvas](https://www.instructure.com/) access token, click [here](#Getting-your-Canvas-access-token) for instructions
+2. Get a BazaarLink API key, click [here](#Getting-your-BazaarLink-API-key) for instructions
 3. Get your organisations canvas url from your dashboard
 4. Add all the information in Elucidate, and your good to go
 

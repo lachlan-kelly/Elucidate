@@ -1,36 +1,23 @@
-# Elucidate — Canvas AI Chat
+# Elucidate
 
-A small local web app: pick a Canvas course and a specific module item,
-assignment, discussion, or page, and it pulls that item's content into a chat
-so you can ask questions about it, get a summary, etc. Replies stream in
-token by token instead of appearing all at once.
+Website based application for creating a bridge between
+Canvas (instructure.com) and your choice of LLM to improve
+QOL in schoolwork.
 
 ## How it works
 
-- A tiny Node/Express server (`server.js`) proxies requests to the Canvas API
-  and to [BazaarLink](https://bazaarlink.ai), an OpenAI-compatible API
-  gateway with a free tier. This is required because both APIs block direct
-  browser requests (CORS), and because your Canvas token should not be
-  exposed in client-side network calls to a third party.
-- The frontend (`public/`) is plain HTML/CSS/JS — no build step.
-- Chat replies stream: the server proxies BazaarLink's streaming response
-  straight through as Server-Sent Events, and the browser reveals the text
-  with a typing animation as it arrives.
-- Your Canvas URL, Canvas token, and BazaarLink API key are entered in the
-  browser once and saved so you don't have to retype them on reload — see
-  **Where your keys are stored** below for exactly how and with what
-  caveats.
+- Uses [BazaarLink](https://bazaarlink.ai/) to access quality LLM's for low or no prices
+  such as [Deepseek](https://www.deepseek.com/) and [Qwen](https://qwen.ai/)
+- The website extracts needed information from your [Canvas](https://www.instructure.com/) acount
+  and presents it to the LLM as source information, NOT training data
+- The user then communicates with the model as a chatbot with full context to your canvas assignment or modules, etc
 
 ## Setup
 
-1. Install [Node.js](https://nodejs.org) version 18 or later (needed for
-   built-in `fetch`).
-2. Open a terminal in this folder and run:
-   ```
-   npm install
-   npm start
-   ```
-3. Open `http://localhost:3000` in your browser.
+1. Get a [Canvas](https://www.instructure.com/) access token, click [here](#Getting your Canvas access token) for instructions
+2. Get a BazaarLink API key, click [here](#Getting your BazaarLink API key) for instructions
+3. Get your organisations canvas url from your dashboard
+4. Add all the information in Elucidate, and your good to go
 
 ## Getting your Canvas access token
 
@@ -49,8 +36,8 @@ Your Canvas URL is the base address you use to log in, e.g.
 1. Go to [bazaarlink.ai/free](https://bazaarlink.ai/free) and sign up (no
    card required).
 2. Create a key under **Keys** — it looks like `sk-bl-...`.
-3. In the app's model dropdown, leave it on **Auto (free)**. BazaarLink's
-   `auto:free` model ID auto-routes each request to whichever free open
+3. In the model dropdown on Elucidate, leave it on **Auto (free)**, unless you understand how model ID's work.
+   BazaarLink's `auto:free` model ID auto-routes each request to whichever free open
    model is currently available (their free tier draws from the Llama,
    Gemma, Qwen, and DeepSeek families, plus a persistent
    `deepseek/deepseek-v4-flash:free` model). If you want to force one
@@ -114,24 +101,3 @@ fields and don't click Save, or clear `localStorage` for this site.
   multiple pages or the whole course at once.
 - This is a single-user local tool with no login system. Don't deploy it
   publicly as-is — see the storage caveat above.
-
-## Fonts
-
-The design calls for "Copernicus" (Galaxie Copernicus), a commercial
-typeface — see `public/fonts/README.txt` for how to add it if you own a
-license. Without those files, the app falls back automatically to
-**Literata**, a free Google Fonts serif that font-matching tools list as
-one of the closest free equivalents.
-
-## Project structure
-
-```
-elucidate/
-├── server.js          Express server: Canvas + BazaarLink proxy routes (streaming)
-├── package.json
-└── public/
-    ├── index.html
-    ├── style.css
-    ├── app.js
-    └── fonts/          drop a licensed Copernicus here if you have one
-```

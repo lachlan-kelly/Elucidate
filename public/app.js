@@ -2,15 +2,17 @@
   "use strict";
 
   // ============================================================
-  // Storage: settings are encrypted at rest with a locally-held
-  // AES-GCM key (obfuscation, not real security — see README).
+  // Storage keys
   // ============================================================
-
   const CRYPTO_KEY_STORAGE = "elucidateCryptoKey";
   const SETTINGS_STORAGE = "elucidateSettings";
   const SIDEBAR_STORAGE = "elucidateSidebarCollapsed";
-  const PREFS_STORAGE = "elucidatePrefs"; // system instructions, theme, animation
+  const PREFS_STORAGE = "elucidatePrefs";
+  const CHAT_STORAGE_PREFIX = "elucidate_chat_";
 
+  // ============================================================
+  // Crypto helpers (AES-GCM Web Crypto)
+  // ============================================================
   function bytesToBase64(bytes) {
     let binary = "";
     bytes.forEach(b => (binary += String.fromCharCode(b)));
@@ -32,7 +34,7 @@
           "decrypt"
         ]);
       } catch {
-        // fall through to regenerate
+        // fall through
       }
     }
     const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
@@ -59,29 +61,51 @@
     return JSON.parse(new TextDecoder().decode(plainBuf));
   }
 
-  // ---------- state ----------
+  // ============================================================
+  // Gradients for Course Cards
+  // ============================================================
+  const CARD_GRADIENTS = [
+    "linear-gradient(135deg, #1e40af 0%, #3b82f6 100%)",
+    "linear-gradient(135deg, #065f46 0%, #10b981 100%)",
+    "linear-gradient(135deg, #7c2d12 0%, #f97316 100%)",
+    "linear-gradient(135deg, #581c87 0%, #a855f7 100%)",
+    "linear-gradient(135deg, #831843 0%, #ec4899 100%)",
+    "linear-gradient(135deg, #134e4a 0%, #14b8a6 100%)",
+    "linear-gradient(135deg, #1e293b 0%, #64748b 100%)",
+    "linear-gradient(135deg, #854d0e 0%, #eab308 100%)"
+  ];
+
+  function getGradientForIndex(i) {
+    return CARD_GRADIENTS[i % CARD_GRADIENTS.length];
+  }
+
+  // ============================================================
+  // App State
+  // ============================================================
   const state = {
     canvasUrl: "",
     canvasToken: "",
     bazaarKey: "",
     model: "auto:free",
-    courseId: "",
-    activeTab: "modules",
+    courses: [],             // [{id, name, course_code}]
+    currentCourse: null,     // {id, name}
+    currentContentType: "",  // 'modules', 'assignments', 'discussions', 'pages'
     currentContext: null,    // { title, body, extra, mediaHints, htmlUrl }
-    messages: [],            // [{role, content}]
+    activeView: "dashboard", // 'dashboard' | 'courses' | 'course-detail' | 'tabs'
+    activeTab: "content",    // 'content' | 'chat'
+    messages: [],            // [{role, content}] for active course
     canvasUserName: "You",
     cryptoKey: null,
-    // Settings/prefs
     systemInstructions: "",
     theme: "light",
-    loadingAnimation: "dots", // 'dots', 'orbit', 'cubes', 'pulse'
-    // File attachments for current message
+    loadingAnimation: "dots",
     pendingAttachments: [],
-    // Current chat session ID (supabase)
-    currentSessionId: null
+    currentSessionId: null   // Supabase chat session UUID
   };
 
-  // ---------- pages ----------
+  // ============================================================
+  // Page Elements
+  // ============================================================
   const pages = {
     connect: document.getElementById("page-connect"),
     chat: document.getElementById("page-chat"),
@@ -100,55 +124,74 @@
     }
   }
 
-  // ---------- element refs ----------
+  // ============================================================
+  // View Elements inside Chat Shell
+  // ============================================================
+  const views = {
+    dashboard: document.getElementById("view-dashboard"),
+    courses: document.getElementById("view-courses"),
+    courseDetail: document.getElementById("view-course-detail"),
+    tabs: document.getElementById("view-tabs")
+  };
+
   const el = {
-    // Chat page
+    // Shell & Sidebar
     appShell: document.getElementById("app-shell"),
     sidebar: document.getElementById("sidebar"),
     sidebarCollapseBtn: document.getElementById("sidebar-collapse-btn"),
+    sidebarMainNav: document.getElementById("sidebar-main-nav"),
+    sidebarNav: document.getElementById("sidebar-nav"),
 
-    coursePanel: document.getElementById("course-panel"),
-    courseToggle: document.getElementById("course-toggle"),
-    courseBody: document.getElementById("course-body"),
-    courseSelect: document.getElementById("course-select"),
+    // Dashboard View
+    courseGallery: document.getElementById("course-gallery"),
 
-    tabsPanel: document.getElementById("tabs-panel"),
-    tabsToggle: document.getElementById("tabs-toggle"),
-    tabsBody: document.getElementById("tabs-body"),
-    tabStrip: document.getElementById("tab-strip"),
+    // Courses View
+    courseList: document.getElementById("course-list"),
+
+    // Course Detail View
+    courseDetailBack: document.getElementById("course-detail-back"),
+    courseDetailTitle: document.getElementById("course-detail-title"),
+    courseNavGrid: document.getElementById("course-nav-grid"),
+    courseItemsSection: document.getElementById("course-items-section"),
+    itemsBack: document.getElementById("items-back"),
+    itemsSectionTitle: document.getElementById("items-section-title"),
     itemList: document.getElementById("item-list"),
     moduleItemList: document.getElementById("module-item-list"),
 
+    // Tabs View
+    tabBar: document.getElementById("tab-bar"),
+    tabBack: document.getElementById("tab-back"),
+    tabBtnContent: document.getElementById("tab-btn-content"),
+    tabBtnChat: document.getElementById("tab-btn-chat"),
+    tabContentLabel: document.getElementById("tab-content-label"),
+    tabPanelContent: document.getElementById("tab-panel-content"),
+    tabPanelChat: document.getElementById("tab-panel-chat"),
+
+    // Content Preview
     contentPreview: document.getElementById("content-preview"),
-    previewToggle: document.getElementById("preview-toggle"),
-    previewChevron: document.getElementById("preview-chevron"),
-    previewBody: document.getElementById("preview-body"),
     previewTitle: document.getElementById("preview-title"),
     previewExtra: document.getElementById("preview-extra"),
     previewText: document.getElementById("preview-text"),
     mediaWarning: document.getElementById("media-warning"),
     previewCanvasLink: document.getElementById("preview-canvas-link"),
 
+    // Chat
     chatLog: document.getElementById("chat-log"),
     emptyState: document.getElementById("empty-state"),
     promptChips: document.getElementById("prompt-chips"),
     chatForm: document.getElementById("chat-form"),
     chatInput: document.getElementById("chat-input"),
-
     attachBtn: document.getElementById("attach-btn"),
     fileInput: document.getElementById("file-input"),
     attachmentChips: document.getElementById("attachment-chips"),
 
-    sidebarNav: document.getElementById("sidebar-nav"),
-
-    // Connect page
+    // Connect Page
     canvasUrl: document.getElementById("canvas-url"),
     canvasToken: document.getElementById("canvas-token"),
     bazaarKey: document.getElementById("bazaar-key"),
     rememberMe: document.getElementById("remember-me"),
     saveSettings: document.getElementById("save-settings"),
     settingsStatus: document.getElementById("settings-status"),
-
     connectTabs: document.getElementById("connect-tabs"),
     connectKeysTab: document.getElementById("connect-keys-tab"),
     connectLoginTab: document.getElementById("connect-login-tab"),
@@ -158,7 +201,7 @@
     authSignup: document.getElementById("auth-signup"),
     authStatus: document.getElementById("auth-status"),
 
-    // Settings page
+    // Settings Page
     settingsBack: document.getElementById("settings-back"),
     systemInstructions: document.getElementById("system-instructions"),
     animationGrid: document.getElementById("animation-grid"),
@@ -171,15 +214,17 @@
     settingsSaveKeys: document.getElementById("settings-save-keys"),
     settingsSaveStatus: document.getElementById("settings-save-status"),
 
-    // Docs page
+    // Docs Page
     docsBack: document.getElementById("docs-back"),
 
-    // Logout page
+    // Logout Page
     logoutConfirm: document.getElementById("logout-confirm"),
     logoutCancel: document.getElementById("logout-cancel")
   };
 
-  // ---------- persistence ----------
+  // ============================================================
+  // Persistence & Preferences
+  // ============================================================
   async function loadSavedKeys() {
     const cipher = localStorage.getItem(SETTINGS_STORAGE);
     if (!cipher) return false;
@@ -228,7 +273,6 @@
       theme: state.theme,
       loadingAnimation: state.loadingAnimation
     }));
-    // Also save to Supabase if configured
     if (window.SupabaseClient && window.SupabaseClient.isConfigured()) {
       window.SupabaseClient.saveSettings({
         system_instructions: state.systemInstructions,
@@ -246,7 +290,9 @@
     });
   }
 
-  // ---------- helpers ----------
+  // ============================================================
+  // API Helpers
+  // ============================================================
   async function api(path, body) {
     const res = await fetch(path, {
       method: "POST",
@@ -262,12 +308,6 @@
     if (!elRef) return;
     elRef.textContent = msg;
     elRef.className = "hint" + (kind ? ` ${kind}` : "");
-  }
-
-  function togglePanel(toggleBtn, bodyEl) {
-    const expanded = toggleBtn.getAttribute("aria-expanded") !== "false";
-    toggleBtn.setAttribute("aria-expanded", String(!expanded));
-    bodyEl.hidden = expanded;
   }
 
   function formatModelName(raw) {
@@ -286,7 +326,6 @@
     );
   }
 
-  // ---------- 4 custom typing animations ----------
   function getTypingAnimationHtml() {
     switch (state.loadingAnimation) {
       case "orbit":
@@ -301,230 +340,195 @@
     }
   }
 
+  function renderMarkdown(text) {
+    if (window.marked && window.DOMPurify) {
+      const html = marked.parse(text, { breaks: true });
+      return DOMPurify.sanitize(html);
+    }
+    return escapeHtml(text).replace(/\n/g, "<br>");
+  }
+
   // ============================================================
-  // CONNECT PAGE
+  // View Management
   // ============================================================
-
-  if (el.connectTabs) {
-    el.connectTabs.addEventListener("click", e => {
-      const tab = e.target.closest(".connect-tab");
-      if (!tab) return;
-      const target = tab.dataset.tab;
-      el.connectTabs.querySelectorAll(".connect-tab").forEach(t => t.classList.toggle("active", t === tab));
-      el.connectKeysTab.hidden = target !== "keys";
-      el.connectLoginTab.hidden = target !== "login";
+  function showView(viewName) {
+    state.activeView = viewName;
+    Object.keys(views).forEach(k => {
+      if (views[k]) views[k].hidden = true;
     });
+
+    if (viewName === "dashboard") {
+      views.dashboard.hidden = false;
+      updateSidebarActiveLink("dashboard");
+      renderDashboard();
+    } else if (viewName === "courses") {
+      views.courses.hidden = false;
+      updateSidebarActiveLink("courses");
+      renderCoursesList();
+    } else if (viewName === "course-detail") {
+      views.courseDetail.hidden = false;
+      updateSidebarActiveLink("courses");
+    } else if (viewName === "tabs") {
+      views.tabs.hidden = false;
+      updateSidebarActiveLink("courses");
+    }
   }
 
-  // Save & connect
-  if (el.saveSettings) {
-    el.saveSettings.addEventListener("click", async () => {
-      state.canvasUrl = el.canvasUrl.value.trim();
-      state.canvasToken = el.canvasToken.value.trim();
-      state.bazaarKey = el.bazaarKey.value.trim();
-      state.model = state.model || "auto:free";
-
-      if (!state.canvasUrl || !state.canvasToken) {
-        setStatus(el.settingsStatus, "Enter your Canvas URL and access token.", "error");
-        return;
-      }
-      if (!state.bazaarKey) {
-        setStatus(el.settingsStatus, "Enter your BazaarLink API key.", "error");
-        return;
-      }
-
-      if (el.rememberMe.checked) {
-        await persistKeys();
-      }
-
-      setStatus(el.settingsStatus, "Connecting…");
-      el.saveSettings.disabled = true;
-      const originalLabel = el.saveSettings.textContent;
-      el.saveSettings.innerHTML = `<span class="btn-spinner"></span>Connecting…`;
-
-      try {
-        const courses = await api("/api/canvas/courses", {
-          canvasUrl: state.canvasUrl,
-          canvasToken: state.canvasToken
-        });
-        if (courses.length === 0) {
-          setStatus(el.settingsStatus, "No active courses found.", "error");
-          return;
-        }
-        setStatus(el.settingsStatus, `Connected — ${courses.length} course${courses.length === 1 ? "" : "s"} found.`, "ok");
-
-        // Get user name (best effort)
-        api("/api/canvas/me", { canvasUrl: state.canvasUrl, canvasToken: state.canvasToken })
-          .then(me => { if (me.name) state.canvasUserName = me.name; })
-          .catch(() => {});
-
-        // Directly navigate to chat
-        Router.navigate("chat");
-      } catch (err) {
-        setStatus(el.settingsStatus, err.message, "error");
-      } finally {
-        el.saveSettings.disabled = false;
-        el.saveSettings.textContent = originalLabel;
-      }
-    });
-  }
-
-  // Supabase auth
-  if (el.authSignin) {
-    el.authSignin.addEventListener("click", async () => {
-      const email = el.authEmail.value.trim();
-      const password = el.authPassword.value.trim();
-      if (!email || !password) {
-        setStatus(el.authStatus, "Enter email and password.", "error");
-        return;
-      }
-      setStatus(el.authStatus, "Signing in…");
-      const { user, error } = await window.SupabaseClient.signIn(email, password);
-      if (error) {
-        setStatus(el.authStatus, error.message || "Sign in failed.", "error");
-        return;
-      }
-      setStatus(el.authStatus, "Signed in!", "ok");
-      // Load settings from Supabase
-      const { data: settings } = await window.SupabaseClient.loadSettings();
-      if (settings) {
-        state.canvasUrl = settings.canvas_url || "";
-        state.canvasToken = settings.canvas_token || "";
-        state.bazaarKey = settings.bazaar_key || "";
-        state.model = settings.model || "auto:free";
-        state.systemInstructions = settings.system_instructions || "";
-        state.theme = settings.theme || "light";
-        state.loadingAnimation = settings.loading_animation || "dots";
-        applyTheme(state.theme);
-        await persistKeys();
-        savePrefs();
-      }
-      if (state.canvasUrl && state.canvasToken && state.bazaarKey) {
-        Router.navigate("chat");
-      } else {
-        el.connectTabs.querySelector('[data-tab="keys"]').click();
-        el.canvasUrl.value = state.canvasUrl;
-        el.canvasToken.value = state.canvasToken;
-        el.bazaarKey.value = state.bazaarKey;
-        setStatus(el.settingsStatus, "Signed in. Enter your API keys to continue.", "ok");
-      }
-    });
-  }
-
-  if (el.authSignup) {
-    el.authSignup.addEventListener("click", async () => {
-      const email = el.authEmail.value.trim();
-      const password = el.authPassword.value.trim();
-      if (!email || !password) {
-        setStatus(el.authStatus, "Enter email and password.", "error");
-        return;
-      }
-      if (password.length < 6) {
-        setStatus(el.authStatus, "Password must be at least 6 characters.", "error");
-        return;
-      }
-      setStatus(el.authStatus, "Creating account…");
-      const { user, error } = await window.SupabaseClient.signUp(email, password);
-      if (error) {
-        setStatus(el.authStatus, error.message || "Sign up failed.", "error");
-        return;
-      }
-      setStatus(el.authStatus, "Account created! Check your email to confirm, then sign in.", "ok");
+  function updateSidebarActiveLink(viewKey) {
+    if (!el.sidebarMainNav) return;
+    el.sidebarMainNav.querySelectorAll(".sidebar-link").forEach(link => {
+      link.classList.toggle("active", link.dataset.view === viewKey);
     });
   }
 
   // ============================================================
-  // CHAT PAGE
+  // Courses Data & Rendering
   // ============================================================
-
-  // Sidebar collapse
-  if (el.sidebarCollapseBtn) {
-    el.sidebarCollapseBtn.addEventListener("click", () => {
-      const collapsed = el.appShell.classList.toggle("sidebar-collapsed");
-      localStorage.setItem(SIDEBAR_STORAGE, collapsed ? "1" : "0");
-    });
-  }
-
-  // Restore sidebar state
-  if (localStorage.getItem(SIDEBAR_STORAGE) === "1" && el.appShell) {
-    el.appShell.classList.add("sidebar-collapsed");
-  }
-
-  // Panel toggles
-  if (el.courseToggle) {
-    el.courseToggle.addEventListener("click", () => togglePanel(el.courseToggle, el.courseBody));
-  }
-  if (el.tabsToggle) {
-    el.tabsToggle.addEventListener("click", () => togglePanel(el.tabsToggle, el.tabsBody));
-  }
-
-  // Sidebar nav links
-  if (el.sidebarNav) {
-    el.sidebarNav.addEventListener("click", e => {
-      const btn = e.target.closest(".sidebar-nav-btn");
-      if (!btn) return;
-      const route = btn.dataset.route;
-      if (route) Router.navigate(route);
-    });
-  }
-
-  // Course select
-  if (el.courseSelect) {
-    el.courseSelect.addEventListener("change", () => {
-      state.courseId = el.courseSelect.value;
-      resetContentArea();
-      if (state.courseId) {
-        el.tabsPanel.hidden = false;
-        loadItems(state.activeTab);
-      } else {
-        el.tabsPanel.hidden = true;
-      }
-    });
-  }
-
-  // Tabs
-  if (el.tabStrip) {
-    el.tabStrip.addEventListener("click", e => {
-      const btn = e.target.closest(".tab");
-      if (!btn) return;
-      state.activeTab = btn.dataset.type;
-      [...el.tabStrip.children].forEach(t => t.classList.toggle("active", t === btn));
-      el.moduleItemList.hidden = true;
-      el.itemList.hidden = false;
-      loadItems(state.activeTab);
-    });
-    el.tabStrip.firstElementChild.classList.add("active");
-  }
-
-  async function loadCourses() {
+  async function fetchCourses() {
+    if (state.courses && state.courses.length > 0) {
+      return state.courses;
+    }
     try {
       const courses = await api("/api/canvas/courses", {
         canvasUrl: state.canvasUrl,
         canvasToken: state.canvasToken
       });
-      populateCourses(courses);
+      state.courses = courses;
+      return courses;
     } catch (err) {
-      el.courseSelect.innerHTML = `<option value="">Error loading courses</option>`;
+      console.error("Failed to load courses:", err);
+      throw err;
     }
   }
 
-  function populateCourses(courses) {
-    el.courseSelect.innerHTML =
-      `<option value="">Select a course…</option>` +
-      courses.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
+  async function renderDashboard() {
+    el.courseGallery.innerHTML = `<div class="gallery-loading"><span class="btn-spinner"></span> Loading courses…</div>`;
+    try {
+      const courses = await fetchCourses();
+      if (courses.length === 0) {
+        el.courseGallery.innerHTML = `<div class="empty-gallery">No active courses found.</div>`;
+        return;
+      }
+      el.courseGallery.innerHTML = "";
+      courses.forEach((course, index) => {
+        const card = document.createElement("div");
+        card.className = "course-card";
+        const gradient = getGradientForIndex(index);
+
+        card.innerHTML = `
+          <div class="course-card-banner" style="background: ${gradient}">
+            <div class="course-card-banner-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+            </div>
+          </div>
+          <div class="course-card-content">
+            <span class="course-card-code">Course ${escapeHtml(String(course.id))}</span>
+            <h3 class="course-card-title">${escapeHtml(course.name)}</h3>
+          </div>
+        `;
+
+        card.addEventListener("click", () => {
+          openCourseDetail(course);
+        });
+
+        el.courseGallery.appendChild(card);
+      });
+    } catch (err) {
+      el.courseGallery.innerHTML = `<div class="hint error">Error loading courses: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  async function renderCoursesList() {
+    el.courseList.innerHTML = `<div class="gallery-loading"><span class="btn-spinner"></span> Loading courses…</div>`;
+    try {
+      const courses = await fetchCourses();
+      if (courses.length === 0) {
+        el.courseList.innerHTML = `<div class="empty-gallery">No active courses found.</div>`;
+        return;
+      }
+      el.courseList.innerHTML = "";
+      courses.forEach(course => {
+        const item = document.createElement("div");
+        item.className = "course-list-item";
+        item.innerHTML = `
+          <div class="course-list-info">
+            <div class="course-list-title">${escapeHtml(course.name)}</div>
+            <div class="course-list-code">ID: ${escapeHtml(String(course.id))}</div>
+          </div>
+          <div class="course-list-arrow">&rarr;</div>
+        `;
+
+        item.addEventListener("click", () => {
+          openCourseDetail(course);
+        });
+
+        el.courseList.appendChild(item);
+      });
+    } catch (err) {
+      el.courseList.innerHTML = `<div class="hint error">Error loading courses: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  // ============================================================
+  // Course Detail Page
+  // ============================================================
+  function openCourseDetail(course) {
+    state.currentCourse = course;
+    el.courseDetailTitle.textContent = course.name;
+    el.courseNavGrid.hidden = false;
+    el.courseItemsSection.hidden = true;
+    showView("course-detail");
+    loadChatForCourse(course.id);
+  }
+
+  // Clicks on Course Nav Cards (Modules, Assignments, Discussions, Pages)
+  if (el.courseNavGrid) {
+    el.courseNavGrid.addEventListener("click", e => {
+      const card = e.target.closest(".course-nav-card");
+      if (!card || !state.currentCourse) return;
+      const type = card.dataset.type;
+      state.currentContentType = type;
+
+      const titles = {
+        modules: "Modules",
+        assignments: "Assignments",
+        discussions: "Discussions",
+        pages: "Pages"
+      };
+
+      el.itemsSectionTitle.textContent = titles[type] || "Items";
+      el.courseNavGrid.hidden = true;
+      el.courseItemsSection.hidden = false;
+      el.moduleItemList.hidden = true;
+      el.itemList.hidden = false;
+      loadItems(type);
+    });
+  }
+
+  if (el.itemsBack) {
+    el.itemsBack.addEventListener("click", () => {
+      el.courseItemsSection.hidden = true;
+      el.courseNavGrid.hidden = false;
+    });
+  }
+
+  if (el.courseDetailBack) {
+    el.courseDetailBack.addEventListener("click", () => {
+      showView("dashboard");
+    });
   }
 
   async function loadItems(type) {
-    el.itemList.innerHTML = `<p class="hint">Loading…</p>`;
+    el.itemList.innerHTML = `<div class="gallery-loading"><span class="btn-spinner"></span> Loading ${type}…</div>`;
     try {
       const items = await api("/api/canvas/items", {
         canvasUrl: state.canvasUrl,
         canvasToken: state.canvasToken,
-        courseId: state.courseId,
+        courseId: state.currentCourse.id,
         type
       });
       if (items.length === 0) {
-        el.itemList.innerHTML = `<p class="hint">Nothing here.</p>`;
+        el.itemList.innerHTML = `<p class="hint">No items found in this section.</p>`;
         return;
       }
       el.itemList.innerHTML = "";
@@ -535,13 +539,11 @@
           item.meta ? `<span class="meta">${escapeHtml(item.meta)}</span>` : ""
         }`;
         row.addEventListener("click", () => {
-          [...el.itemList.children].forEach(r => r.classList.remove("active"));
-          row.classList.add("active");
           if (type === "modules") {
             loadModuleItems(item.id, item.name);
           } else {
             const singular = type.slice(0, -1);
-            loadContent(singular, item.id);
+            openTabView(singular, item.id, item.name);
           }
         });
         el.itemList.appendChild(row);
@@ -554,18 +556,18 @@
   async function loadModuleItems(moduleId, moduleName) {
     el.itemList.hidden = true;
     el.moduleItemList.hidden = false;
-    el.moduleItemList.innerHTML = `<p class="hint">Loading…</p>`;
+    el.moduleItemList.innerHTML = `<div class="gallery-loading"><span class="btn-spinner"></span> Loading items…</div>`;
     try {
       const items = await api("/api/canvas/module-items", {
         canvasUrl: state.canvasUrl,
         canvasToken: state.canvasToken,
-        courseId: state.courseId,
+        courseId: state.currentCourse.id,
         moduleId
       });
       el.moduleItemList.innerHTML = "";
       const back = document.createElement("button");
       back.className = "back-row";
-      back.textContent = `← ${moduleName}`;
+      back.textContent = `← Back to Modules (${moduleName})`;
       back.addEventListener("click", () => {
         el.moduleItemList.hidden = true;
         el.itemList.hidden = false;
@@ -581,15 +583,13 @@
           item.type || ""
         )}</span>`;
         if (disabled) {
-          row.title = "This item type can't be extracted automatically.";
+          row.title = "This item type cannot be extracted automatically.";
           row.style.opacity = "0.45";
           row.style.cursor = "default";
         } else {
           row.addEventListener("click", () => {
-            [...el.moduleItemList.children].forEach(r => r.classList.remove("active"));
-            row.classList.add("active");
             const idForFetch = item.type === "Page" ? item.page_url : item.content_id;
-            loadContent(item.type.toLowerCase(), idForFetch, item.html_url);
+            openTabView(item.type.toLowerCase(), idForFetch, item.name, item.html_url);
           });
         }
         el.moduleItemList.appendChild(row);
@@ -599,9 +599,41 @@
     }
   }
 
-  // ---------- content loading ----------
-  async function loadContent(type, itemId, htmlUrl) {
-    el.contentPreview.hidden = false;
+  // ============================================================
+  // VSCode-Style Tab System (Content + AI Chat)
+  // ============================================================
+  function switchTab(tabName) {
+    state.activeTab = tabName;
+    const isContent = tabName === "content";
+    el.tabBtnContent.classList.toggle("active", isContent);
+    el.tabBtnChat.classList.toggle("active", !isContent);
+    el.tabPanelContent.hidden = !isContent;
+    el.tabPanelChat.hidden = isContent;
+
+    if (!isContent) {
+      scrollChatToBottom();
+      el.chatInput.focus();
+    }
+  }
+
+  if (el.tabBtnContent) {
+    el.tabBtnContent.addEventListener("click", () => switchTab("content"));
+  }
+  if (el.tabBtnChat) {
+    el.tabBtnChat.addEventListener("click", () => switchTab("chat"));
+  }
+
+  if (el.tabBack) {
+    el.tabBack.addEventListener("click", () => {
+      showView("course-detail");
+    });
+  }
+
+  async function openTabView(type, itemId, itemName, htmlUrl) {
+    showView("tabs");
+    switchTab("content");
+
+    el.tabContentLabel.textContent = itemName || "Content";
     el.previewTitle.textContent = "Loading…";
     el.previewText.textContent = "";
     el.previewExtra.textContent = "";
@@ -610,13 +642,12 @@
 
     try {
       let data;
-
       if (type === "file") {
         try {
           data = await api("/api/canvas/file-content", {
             canvasUrl: state.canvasUrl,
             canvasToken: state.canvasToken,
-            courseId: state.courseId,
+            courseId: state.currentCourse.id,
             fileId: itemId
           });
           data = {
@@ -630,7 +661,7 @@
           data = await api("/api/canvas/content", {
             canvasUrl: state.canvasUrl,
             canvasToken: state.canvasToken,
-            courseId: state.courseId,
+            courseId: state.currentCourse.id,
             type,
             itemId
           });
@@ -639,18 +670,17 @@
         data = await api("/api/canvas/content", {
           canvasUrl: state.canvasUrl,
           canvasToken: state.canvasToken,
-          courseId: state.courseId,
+          courseId: state.currentCourse.id,
           type,
           itemId
         });
       }
 
       state.currentContext = data;
-      el.previewTitle.textContent = data.title || "Untitled";
+      el.previewTitle.textContent = data.title || itemName || "Untitled";
       el.previewExtra.textContent = data.extra || "";
-      el.previewText.textContent = data.body || "";
+      el.previewText.textContent = data.body || "(No text content)";
 
-      // Canvas external link
       const canvasLink = data.htmlUrl || htmlUrl;
       if (canvasLink) {
         el.previewCanvasLink.href = canvasLink;
@@ -664,62 +694,90 @@
         } (e.g. video). The AI can't watch or transcribe it — only the surrounding text is available.`;
       }
 
-      startNewConversation(data.title);
+      el.promptChips.hidden = false;
+      setInputEnabled(true);
     } catch (err) {
       el.previewTitle.textContent = "Couldn't load this item";
       el.previewText.textContent = err.message;
     }
   }
 
-  if (el.previewToggle) {
-    el.previewToggle.addEventListener("click", () => {
-      const collapsed = el.previewBody.classList.toggle("collapsed");
-      el.previewChevron.style.transform = collapsed ? "rotate(-90deg)" : "rotate(0deg)";
-    });
-  }
-
-  // ---------- markdown rendering ----------
-  function renderMarkdown(text) {
-    if (window.marked && window.DOMPurify) {
-      const html = marked.parse(text, { breaks: true });
-      return DOMPurify.sanitize(html);
-    }
-    return escapeHtml(text).replace(/\n/g, "<br>");
-  }
-
-  // ---------- chat ----------
-  function resetContentArea() {
-    el.contentPreview.hidden = true;
-    el.previewCanvasLink.hidden = true;
-    state.currentContext = null;
-    state.messages = [];
-    el.chatLog.innerHTML = "";
-    if (el.emptyState) el.chatLog.appendChild(el.emptyState);
-    el.promptChips.hidden = true;
-    setInputEnabled(false);
-  }
-
-  function startNewConversation(title) {
+  // ============================================================
+  // Per-Subject Chat Persistence
+  // ============================================================
+  async function loadChatForCourse(courseId) {
+    if (!courseId) return;
     state.messages = [];
     state.currentSessionId = null;
     el.chatLog.innerHTML = "";
-    addSystemNote(`Now discussing: ${title || "this page"}`);
-    el.promptChips.hidden = false;
-    setInputEnabled(true);
-    el.chatInput.focus();
+    if (el.emptyState) el.chatLog.appendChild(el.emptyState);
 
-    // Create a Supabase chat session (fire and forget)
+    let loaded = false;
+
+    // Try Supabase first if configured
     if (window.SupabaseClient && window.SupabaseClient.isConfigured()) {
-      window.SupabaseClient.saveChatSession({
-        title: title || "Untitled",
-        course_id: state.courseId,
-        canvas_item_type: state.activeTab,
-        canvas_item_id: String(state.currentContext?.title || ""),
-        context: state.currentContext
-      }).then(({ data }) => {
-        if (data) state.currentSessionId = data.id;
-      }).catch(() => {});
+      try {
+        const { data: session } = await window.SupabaseClient.findChatSessionForCourse(courseId);
+        if (session) {
+          state.currentSessionId = session.id;
+          const { data: dbMessages } = await window.SupabaseClient.loadChatMessages(session.id);
+          if (dbMessages && dbMessages.length > 0) {
+            state.messages = dbMessages.map(m => ({ role: m.role, content: m.content }));
+            renderAllMessages(state.messages);
+            loaded = true;
+          }
+        }
+      } catch (e) {
+        console.warn("Could not load messages from Supabase:", e);
+      }
     }
+
+    // Fallback to localStorage if not loaded from Supabase
+    if (!loaded) {
+      try {
+        const local = localStorage.getItem(CHAT_STORAGE_PREFIX + courseId);
+        if (local) {
+          const parsed = JSON.parse(local);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            state.messages = parsed;
+            renderAllMessages(state.messages);
+            loaded = true;
+          }
+        }
+      } catch (e) {
+        console.warn("Could not load local chat history:", e);
+      }
+    }
+
+    if (!loaded) {
+      if (el.emptyState) el.emptyState.hidden = false;
+    }
+  }
+
+  function saveChatLocally(courseId) {
+    if (!courseId) return;
+    try {
+      localStorage.setItem(CHAT_STORAGE_PREFIX + courseId, JSON.stringify(state.messages));
+    } catch (e) {
+      console.warn("Could not save chat to localStorage:", e);
+    }
+  }
+
+  function renderAllMessages(messages) {
+    el.chatLog.innerHTML = "";
+    messages.forEach(msg => {
+      const senderLabel = msg.role === "user" ? (state.canvasUserName || "You") : formatModelName(state.model);
+      const contentHtml = msg.role === "user" ? escapeHtml(msg.content).replace(/\n/g, "<br>") : renderMarkdown(msg.content);
+      const { bubble } = addMessage(msg.role, senderLabel, contentHtml);
+      if (msg.role === "assistant") {
+        addDownloadButtons(bubble);
+        const cards = parseFlashcards(msg.content);
+        if (cards.length >= 2) {
+          renderFlashcardDeck(cards, bubble);
+        }
+      }
+    });
+    scrollChatToBottom();
   }
 
   function setInputEnabled(enabled) {
@@ -727,15 +785,11 @@
     el.attachBtn.disabled = !enabled;
   }
 
-  function addSystemNote(text) {
-    const div = document.createElement("div");
-    div.className = "msg system-note";
-    div.textContent = text;
-    el.chatLog.appendChild(div);
-    scrollChatToBottom();
-  }
-
   function addMessage(role, senderLabel, contentHtml) {
+    if (el.emptyState && el.emptyState.parentNode === el.chatLog) {
+      el.chatLog.removeChild(el.emptyState);
+    }
+
     const block = document.createElement("div");
     block.className = `msg-block ${role}`;
 
@@ -758,7 +812,9 @@
     el.chatLog.scrollTop = el.chatLog.scrollHeight;
   }
 
-  // ---------- download buttons on code blocks ----------
+  // ============================================================
+  // Code block download buttons & 3D Flashcards
+  // ============================================================
   function addDownloadButtons(containerEl) {
     containerEl.querySelectorAll("pre").forEach(pre => {
       if (pre.querySelector(".code-download-btn")) return;
@@ -781,7 +837,6 @@
     });
   }
 
-  // ---------- flashcard parsing & rendering ----------
   function parseFlashcards(text) {
     const cards = [];
     const patterns = [
@@ -819,7 +874,6 @@
 
   function renderFlashcardDeck(cards, containerEl) {
     let currentIndex = 0;
-
     const deck = document.createElement("div");
     deck.className = "flashcard-deck";
 
@@ -861,7 +915,7 @@
 
     const hint = document.createElement("div");
     hint.className = "flashcard-hint";
-    hint.textContent = "Click the card to flip it";
+    hint.textContent = "Click card to flip";
     deck.appendChild(hint);
 
     function render() {
@@ -888,7 +942,9 @@
     containerEl.appendChild(deck);
   }
 
-  // ---------- streaming typewriter ----------
+  // ============================================================
+  // Streaming Typewriter & Message Execution
+  // ============================================================
   function createTypewriter(bubbleEl) {
     let queue = "";
     let displayed = "";
@@ -982,7 +1038,7 @@
   }
 
   async function sendMessage(text) {
-    if (!text || !state.currentContext) return;
+    if (!text || !state.currentCourse) return;
 
     let displayHtml = escapeHtml(text).replace(/\n/g, "<br>");
     if (state.pendingAttachments.length > 0) {
@@ -992,6 +1048,7 @@
 
     addMessage("user", state.canvasUserName || "You", displayHtml);
     state.messages.push({ role: "user", content: text });
+    saveChatLocally(state.currentCourse.id);
     setInputEnabled(false);
 
     const attachments = state.pendingAttachments.map(a => ({
@@ -1013,7 +1070,7 @@
         {
           bazaarKey: state.bazaarKey,
           model: state.model || "auto:free",
-          context: state.currentContext,
+          context: state.currentContext || { title: state.currentCourse.name, body: "General discussion about " + state.currentCourse.name },
           messages: state.messages,
           systemInstructions: state.systemInstructions || undefined,
           attachments: attachments.length > 0 ? attachments : undefined
@@ -1042,17 +1099,32 @@
 
       if (result.text) {
         state.messages.push({ role: "assistant", content: result.text });
-        if (window.SupabaseClient && window.SupabaseClient.isConfigured() && state.currentSessionId) {
-          window.SupabaseClient.saveChatMessage({
-            session_id: state.currentSessionId,
-            role: "user",
-            content: text
-          }).catch(() => {});
-          window.SupabaseClient.saveChatMessage({
-            session_id: state.currentSessionId,
-            role: "assistant",
-            content: result.text
-          }).catch(() => {});
+        saveChatLocally(state.currentCourse.id);
+
+        if (window.SupabaseClient && window.SupabaseClient.isConfigured()) {
+          // If no session exists yet, create one
+          if (!state.currentSessionId) {
+            try {
+              const { data: session } = await window.SupabaseClient.saveChatSession({
+                title: state.currentCourse.name,
+                course_id: state.currentCourse.id,
+                context: state.currentContext
+              });
+              if (session) state.currentSessionId = session.id;
+            } catch (e) {}
+          }
+          if (state.currentSessionId) {
+            window.SupabaseClient.saveChatMessage({
+              session_id: state.currentSessionId,
+              role: "user",
+              content: text
+            }).catch(() => {});
+            window.SupabaseClient.saveChatMessage({
+              session_id: state.currentSessionId,
+              role: "assistant",
+              content: result.text
+            }).catch(() => {});
+          }
         }
       }
     } catch (err) {
@@ -1063,7 +1135,9 @@
     }
   }
 
-  // --- Chat input auto-resize & key handling ---
+  // ============================================================
+  // Event Listeners: Chat Input, Files, Prompts
+  // ============================================================
   if (el.chatInput) {
     el.chatInput.addEventListener("input", () => {
       el.chatInput.style.height = "auto";
@@ -1089,7 +1163,6 @@
     });
   }
 
-  // --- File attachments ---
   if (el.attachBtn) {
     el.attachBtn.addEventListener("click", () => el.fileInput.click());
   }
@@ -1125,12 +1198,7 @@
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result);
       reader.onerror = reject;
-      if (file.type.startsWith("text/") || file.type === "application/json" ||
-          file.name.endsWith(".md") || file.name.endsWith(".csv")) {
-        reader.readAsText(file);
-      } else {
-        reader.readAsText(file);
-      }
+      reader.readAsText(file);
     });
   }
 
@@ -1157,7 +1225,6 @@
     });
   }
 
-  // --- Quick-prompt chips ---
   const QUICK_PROMPTS = {
     quiz: "Please quiz me on this material. Ask me one question at a time covering the key points, wait for my answer before asking the next question, and check each answer as I give it, explaining anything I get wrong.",
     summarise: "Please summarise this for me, covering the key points I should know.",
@@ -1171,10 +1238,11 @@ Create at least 8 flashcards covering the most important points.`
   if (el.promptChips) {
     el.promptChips.addEventListener("click", e => {
       const btn = e.target.closest(".chip");
-      if (!btn || !state.currentContext) return;
+      if (!btn) return;
       const kind = btn.dataset.prompt;
 
       if (kind === "mark-essay") {
+        switchTab("chat");
         el.chatInput.value =
           "Please mark my essay below against the marking guide or rubric on this page, and give me feedback on how to improve it.\n\nMy essay:\n";
         el.chatInput.style.height = "auto";
@@ -1185,19 +1253,176 @@ Create at least 8 flashcards covering the most important points.`
       }
 
       const prompt = QUICK_PROMPTS[kind];
-      if (prompt) sendMessage(prompt);
+      if (prompt) {
+        switchTab("chat");
+        sendMessage(prompt);
+      }
     });
   }
 
   // ============================================================
-  // SETTINGS PAGE
+  // Sidebar Navigation Listeners
   // ============================================================
+  if (el.sidebarCollapseBtn) {
+    el.sidebarCollapseBtn.addEventListener("click", () => {
+      const collapsed = el.appShell.classList.toggle("sidebar-collapsed");
+      localStorage.setItem(SIDEBAR_STORAGE, collapsed ? "1" : "0");
+    });
+  }
 
+  if (localStorage.getItem(SIDEBAR_STORAGE) === "1" && el.appShell) {
+    el.appShell.classList.add("sidebar-collapsed");
+  }
+
+  if (el.sidebarMainNav) {
+    el.sidebarMainNav.addEventListener("click", e => {
+      const link = e.target.closest(".sidebar-link");
+      if (!link) return;
+      const view = link.dataset.view;
+      if (view) showView(view);
+    });
+  }
+
+  if (el.sidebarNav) {
+    el.sidebarNav.addEventListener("click", e => {
+      const btn = e.target.closest(".sidebar-nav-btn");
+      if (!btn) return;
+      const route = btn.dataset.route;
+      if (route) Router.navigate(route);
+    });
+  }
+
+  // ============================================================
+  // Connect Page Logic
+  // ============================================================
+  if (el.connectTabs) {
+    el.connectTabs.addEventListener("click", e => {
+      const tab = e.target.closest(".connect-tab");
+      if (!tab) return;
+      const target = tab.dataset.tab;
+      el.connectTabs.querySelectorAll(".connect-tab").forEach(t => t.classList.toggle("active", t === tab));
+      el.connectKeysTab.hidden = target !== "keys";
+      el.connectLoginTab.hidden = target !== "login";
+    });
+  }
+
+  if (el.saveSettings) {
+    el.saveSettings.addEventListener("click", async () => {
+      state.canvasUrl = el.canvasUrl.value.trim();
+      state.canvasToken = el.canvasToken.value.trim();
+      state.bazaarKey = el.bazaarKey.value.trim();
+      state.model = state.model || "auto:free";
+
+      if (!state.canvasUrl || !state.canvasToken) {
+        setStatus(el.settingsStatus, "Enter your Canvas URL and access token.", "error");
+        return;
+      }
+      if (!state.bazaarKey) {
+        setStatus(el.settingsStatus, "Enter your BazaarLink API key.", "error");
+        return;
+      }
+
+      if (el.rememberMe.checked) {
+        await persistKeys();
+      }
+
+      setStatus(el.settingsStatus, "Connecting…");
+      el.saveSettings.disabled = true;
+      const originalLabel = el.saveSettings.textContent;
+      el.saveSettings.innerHTML = `<span class="btn-spinner"></span>Connecting…`;
+
+      try {
+        state.courses = [];
+        const courses = await fetchCourses();
+        if (courses.length === 0) {
+          setStatus(el.settingsStatus, "No active courses found.", "error");
+          return;
+        }
+        setStatus(el.settingsStatus, `Connected — ${courses.length} course${courses.length === 1 ? "" : "s"} found.`, "ok");
+
+        api("/api/canvas/me", { canvasUrl: state.canvasUrl, canvasToken: state.canvasToken })
+          .then(me => { if (me.name) state.canvasUserName = me.name; })
+          .catch(() => {});
+
+        Router.navigate("chat");
+      } catch (err) {
+        setStatus(el.settingsStatus, err.message, "error");
+      } finally {
+        el.saveSettings.disabled = false;
+        el.saveSettings.textContent = originalLabel;
+      }
+    });
+  }
+
+  if (el.authSignin) {
+    el.authSignin.addEventListener("click", async () => {
+      const email = el.authEmail.value.trim();
+      const password = el.authPassword.value.trim();
+      if (!email || !password) {
+        setStatus(el.authStatus, "Enter email and password.", "error");
+        return;
+      }
+      setStatus(el.authStatus, "Signing in…");
+      const { user, error } = await window.SupabaseClient.signIn(email, password);
+      if (error) {
+        setStatus(el.authStatus, error.message || "Sign in failed.", "error");
+        return;
+      }
+      setStatus(el.authStatus, "Signed in!", "ok");
+      const { data: settings } = await window.SupabaseClient.loadSettings();
+      if (settings) {
+        state.canvasUrl = settings.canvas_url || "";
+        state.canvasToken = settings.canvas_token || "";
+        state.bazaarKey = settings.bazaar_key || "";
+        state.model = settings.model || "auto:free";
+        state.systemInstructions = settings.system_instructions || "";
+        state.theme = settings.theme || "light";
+        state.loadingAnimation = settings.loading_animation || "dots";
+        applyTheme(state.theme);
+        await persistKeys();
+        savePrefs();
+      }
+      if (state.canvasUrl && state.canvasToken && state.bazaarKey) {
+        Router.navigate("chat");
+      } else {
+        el.connectTabs.querySelector('[data-tab="keys"]').click();
+        el.canvasUrl.value = state.canvasUrl;
+        el.canvasToken.value = state.canvasToken;
+        el.bazaarKey.value = state.bazaarKey;
+        setStatus(el.settingsStatus, "Signed in. Enter your API keys to continue.", "ok");
+      }
+    });
+  }
+
+  if (el.authSignup) {
+    el.authSignup.addEventListener("click", async () => {
+      const email = el.authEmail.value.trim();
+      const password = el.authPassword.value.trim();
+      if (!email || !password) {
+        setStatus(el.authStatus, "Enter email and password.", "error");
+        return;
+      }
+      if (password.length < 6) {
+        setStatus(el.authStatus, "Password must be at least 6 characters.", "error");
+        return;
+      }
+      setStatus(el.authStatus, "Creating account…");
+      const { user, error } = await window.SupabaseClient.signUp(email, password);
+      if (error) {
+        setStatus(el.authStatus, error.message || "Sign up failed.", "error");
+        return;
+      }
+      setStatus(el.authStatus, "Account created! Check your email to confirm, then sign in.", "ok");
+    });
+  }
+
+  // ============================================================
+  // Settings Page Logic
+  // ============================================================
   if (el.settingsBack) {
     el.settingsBack.addEventListener("click", () => Router.navigate("chat"));
   }
 
-  // System instructions
   if (el.systemInstructions) {
     el.systemInstructions.addEventListener("input", () => {
       state.systemInstructions = el.systemInstructions.value;
@@ -1205,7 +1430,6 @@ Create at least 8 flashcards covering the most important points.`
     });
   }
 
-  // Theme toggle
   document.querySelectorAll(".theme-btn").forEach(btn => {
     btn.addEventListener("click", () => {
       applyTheme(btn.dataset.theme);
@@ -1213,7 +1437,6 @@ Create at least 8 flashcards covering the most important points.`
     });
   });
 
-  // Animation picker
   if (el.animationGrid) {
     el.animationGrid.addEventListener("click", e => {
       const option = e.target.closest(".animation-option");
@@ -1225,7 +1448,6 @@ Create at least 8 flashcards covering the most important points.`
     });
   }
 
-  // Model select in settings
   const settingsModelSelect = document.getElementById("settings-model-select");
   if (settingsModelSelect) {
     settingsModelSelect.addEventListener("change", () => {
@@ -1235,7 +1457,6 @@ Create at least 8 flashcards covering the most important points.`
     });
   }
 
-  // Save keys from settings
   if (el.settingsSaveKeys) {
     el.settingsSaveKeys.addEventListener("click", async () => {
       const url = el.settingsCanvasUrl.value.trim();
@@ -1251,7 +1472,6 @@ Create at least 8 flashcards covering the most important points.`
 
       await persistKeys();
 
-      // Also save to Supabase
       if (window.SupabaseClient && window.SupabaseClient.isConfigured()) {
         await window.SupabaseClient.saveSettings({
           canvas_url: state.canvasUrl,
@@ -1265,50 +1485,6 @@ Create at least 8 flashcards covering the most important points.`
       setTimeout(() => setStatus(el.settingsSaveStatus, "", ""), 3000);
     });
   }
-
-  // ============================================================
-  // DOCS PAGE
-  // ============================================================
-
-  if (el.docsBack) {
-    el.docsBack.addEventListener("click", () => Router.navigate("chat"));
-  }
-
-  // ============================================================
-  // LOGOUT PAGE
-  // ============================================================
-
-  if (el.logoutConfirm) {
-    el.logoutConfirm.addEventListener("click", async () => {
-      localStorage.removeItem(SETTINGS_STORAGE);
-      localStorage.removeItem(CRYPTO_KEY_STORAGE);
-      localStorage.removeItem(PREFS_STORAGE);
-      localStorage.removeItem(SIDEBAR_STORAGE);
-
-      if (window.SupabaseClient && window.SupabaseClient.isConfigured()) {
-        await window.SupabaseClient.signOut().catch(() => {});
-      }
-
-      state.canvasUrl = "";
-      state.canvasToken = "";
-      state.bazaarKey = "";
-      state.model = "auto:free";
-      state.systemInstructions = "";
-      state.theme = "light";
-      state.loadingAnimation = "dots";
-      applyTheme("light");
-
-      Router.navigate("connect");
-    });
-  }
-
-  if (el.logoutCancel) {
-    el.logoutCancel.addEventListener("click", () => Router.navigate("chat"));
-  }
-
-  // ============================================================
-  // ROUTER SETUP
-  // ============================================================
 
   function populateSettingsPage() {
     el.systemInstructions.value = state.systemInstructions || "";
@@ -1331,6 +1507,46 @@ Create at least 8 flashcards covering the most important points.`
     });
   }
 
+  // ============================================================
+  // Docs & Logout Logic
+  // ============================================================
+  if (el.docsBack) {
+    el.docsBack.addEventListener("click", () => Router.navigate("chat"));
+  }
+
+  if (el.logoutConfirm) {
+    el.logoutConfirm.addEventListener("click", async () => {
+      localStorage.removeItem(SETTINGS_STORAGE);
+      localStorage.removeItem(CRYPTO_KEY_STORAGE);
+      localStorage.removeItem(PREFS_STORAGE);
+      localStorage.removeItem(SIDEBAR_STORAGE);
+
+      if (window.SupabaseClient && window.SupabaseClient.isConfigured()) {
+        await window.SupabaseClient.signOut().catch(() => {});
+      }
+
+      state.canvasUrl = "";
+      state.canvasToken = "";
+      state.bazaarKey = "";
+      state.model = "auto:free";
+      state.systemInstructions = "";
+      state.theme = "light";
+      state.loadingAnimation = "dots";
+      state.courses = [];
+      state.currentCourse = null;
+      applyTheme("light");
+
+      Router.navigate("connect");
+    });
+  }
+
+  if (el.logoutCancel) {
+    el.logoutCancel.addEventListener("click", () => Router.navigate("chat"));
+  }
+
+  // ============================================================
+  // Router Initialization
+  // ============================================================
   Router.init({
     connect: () => {
       showPage("connect");
@@ -1342,14 +1558,12 @@ Create at least 8 flashcards covering the most important points.`
     },
     chat: () => {
       showPage("chat");
-      if (el.courseSelect.options.length <= 1 || el.courseSelect.options[0].textContent === "Loading courses…") {
-        loadCourses();
-      }
       if (state.canvasUserName === "You") {
         api("/api/canvas/me", { canvasUrl: state.canvasUrl, canvasToken: state.canvasToken })
           .then(me => { if (me.name) state.canvasUserName = me.name; })
           .catch(() => {});
       }
+      showView(state.activeView || "dashboard");
     },
     settings: () => {
       showPage("settings");
@@ -1363,7 +1577,7 @@ Create at least 8 flashcards covering the most important points.`
     }
   });
 
-  // Route guards
+  // Guards
   Router.addGuard("chat", () => {
     if (!state.canvasUrl || !state.canvasToken || !state.bazaarKey) return "connect";
     return true;
@@ -1374,14 +1588,11 @@ Create at least 8 flashcards covering the most important points.`
   });
 
   // ============================================================
-  // INIT
+  // Application Bootstrap
   // ============================================================
-
   (async function init() {
     loadPrefs();
-
     const hasSavedKeys = await loadSavedKeys();
-
     if (hasSavedKeys) {
       const current = Router.current();
       if (!current || current === "connect") {

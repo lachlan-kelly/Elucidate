@@ -75,7 +75,7 @@
 <div class="page page-chat" id="page-chat" hidden>
   <div class="app-shell" id="app-shell">
 
-    <!-- LEFT: SIDEBAR NAVIGATION (Canvas-style) -->
+    <!-- 1. PRIMARY SIDEBAR NAVIGATION (Global Canvas-style) -->
     <aside class="sidebar" id="sidebar">
       <header class="brand">
         <img src="logo.png" alt="Elucidate" class="brand-mark" />
@@ -102,7 +102,7 @@
         </nav>
       </div>
 
-      <!-- Bottom nav links -->
+      <!-- Bottom nav links (stacked vertically so it's not squished) -->
       <nav class="sidebar-nav" id="sidebar-nav">
         <button class="sidebar-nav-btn" data-route="settings" title="Settings">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -119,7 +119,40 @@
       </nav>
     </aside>
 
-    <!-- RIGHT: MAIN CONTENT AREA -->
+    <!-- 2. SECONDARY COURSE SUB-SIDEBAR (Skinnier sidebar shown when in a course) -->
+    <aside class="course-sidebar" id="course-sidebar" hidden>
+      <div class="course-sidebar-header">
+        <button class="course-sidebar-back-btn" id="course-sidebar-back" title="Back to courses">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8L10 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>Courses</span>
+        </button>
+        <div class="course-sidebar-info">
+          <span class="course-sidebar-code" id="course-sidebar-code">Course</span>
+          <h2 class="course-sidebar-title" id="course-sidebar-title">Course Name</h2>
+        </div>
+      </div>
+
+      <nav class="course-sidebar-nav" id="course-sidebar-nav">
+        <button class="course-sub-link active" data-type="modules">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/></svg>
+          <span>Modules</span>
+        </button>
+        <button class="course-sub-link" data-type="assignments">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          <span>Assignments</span>
+        </button>
+        <button class="course-sub-link" data-type="discussions">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span>Discussions</span>
+        </button>
+        <button class="course-sub-link" data-type="pages">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          <span>Pages</span>
+        </button>
+      </nav>
+    </aside>
+
+    <!-- 3. RIGHT: MAIN CONTENT AREA -->
     <main class="main" id="main-content">
 
       <!-- ===== VIEW: DASHBOARD (course gallery) ===== -->
@@ -128,11 +161,7 @@
           <h1>Dashboard</h1>
           <p class="view-subtitle">Your courses at a glance</p>
         </div>
-        <div class="course-gallery" id="course-gallery">
-          <div class="gallery-loading">
-            <span class="btn-spinner"></span> Loading courses...
-          </div>
-        </div>
+        <div class="course-gallery" id="course-gallery"></div>
       </div>
 
       <!-- ===== VIEW: COURSES (list) ===== -->
@@ -141,43 +170,16 @@
           <h1>Courses</h1>
           <p class="view-subtitle">All your enrolled courses</p>
         </div>
-        <div class="course-list" id="course-list">
-          <div class="gallery-loading">
-            <span class="btn-spinner"></span> Loading courses...
-          </div>
-        </div>
+        <div class="course-list" id="course-list"></div>
       </div>
 
-      <!-- ===== VIEW: COURSE DETAIL (per-course nav) ===== -->
-      <div class="view" id="view-course-detail" hidden>
+      <!-- ===== VIEW: COURSE ITEMS (list view of modules, assignments, etc.) ===== -->
+      <div class="view" id="view-course-items" hidden>
         <div class="view-header">
-          <button class="back-link" id="course-detail-back">← Back to courses</button>
-          <h1 id="course-detail-title">Course Name</h1>
+          <h1 id="items-view-title">Modules</h1>
+          <p class="view-subtitle" id="items-view-subtitle">Select an item to view content and chat with AI</p>
         </div>
-        <div class="course-nav-grid" id="course-nav-grid">
-          <button class="course-nav-card" data-type="modules">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/></svg>
-            <span>Modules</span>
-          </button>
-          <button class="course-nav-card" data-type="assignments">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-            <span>Assignments</span>
-          </button>
-          <button class="course-nav-card" data-type="discussions">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            <span>Discussions</span>
-          </button>
-          <button class="course-nav-card" data-type="pages">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-            <span>Pages</span>
-          </button>
-        </div>
-        <!-- Item listing area (shown after clicking a nav card) -->
-        <div class="course-items-section" id="course-items-section" hidden>
-          <div class="course-items-header">
-            <button class="back-link" id="items-back">← Back to course</button>
-            <h2 id="items-section-title">Modules</h2>
-          </div>
+        <div class="course-items-container">
           <div class="item-list" id="item-list"></div>
           <div class="item-list" id="module-item-list" hidden></div>
         </div>
@@ -219,6 +221,14 @@
             <div class="preview-body" id="preview-body">
               <p class="preview-extra" id="preview-extra"></p>
               <p class="media-warning" id="media-warning" hidden></p>
+              <div id="preview-skeleton" class="preview-skeleton-loader" hidden>
+                <div class="skeleton skeleton-line" style="width: 90%; height: 18px; margin-bottom: 12px;"></div>
+                <div class="skeleton skeleton-line" style="width: 75%; height: 16px; margin-bottom: 12px;"></div>
+                <div class="skeleton skeleton-line" style="width: 95%; height: 16px; margin-bottom: 12px;"></div>
+                <div class="skeleton skeleton-line" style="width: 60%; height: 16px; margin-bottom: 24px;"></div>
+                <div class="skeleton skeleton-line" style="width: 85%; height: 16px; margin-bottom: 12px;"></div>
+                <div class="skeleton skeleton-line" style="width: 80%; height: 16px;"></div>
+              </div>
               <pre id="preview-text"></pre>
             </div>
           </section>

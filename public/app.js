@@ -89,9 +89,9 @@
     model: "auto:free",
     courses: [],             // [{id, name, course_code}]
     currentCourse: null,     // {id, name}
-    currentContentType: "",  // 'modules', 'assignments', 'discussions', 'pages'
+    currentContentType: "modules", // 'modules', 'assignments', 'discussions', 'pages'
     currentContext: null,    // { title, body, extra, mediaHints, htmlUrl }
-    activeView: "dashboard", // 'dashboard' | 'courses' | 'course-detail' | 'tabs'
+    activeView: "dashboard", // 'dashboard' | 'courses' | 'course-items' | 'tabs'
     activeTab: "content",    // 'content' | 'chat'
     messages: [],            // [{role, content}] for active course
     canvasUserName: "You",
@@ -130,17 +130,24 @@
   const views = {
     dashboard: document.getElementById("view-dashboard"),
     courses: document.getElementById("view-courses"),
-    courseDetail: document.getElementById("view-course-detail"),
+    courseItems: document.getElementById("view-course-items"),
     tabs: document.getElementById("view-tabs")
   };
 
   const el = {
-    // Shell & Sidebar
+    // Shell & Primary Sidebar
     appShell: document.getElementById("app-shell"),
     sidebar: document.getElementById("sidebar"),
     sidebarCollapseBtn: document.getElementById("sidebar-collapse-btn"),
     sidebarMainNav: document.getElementById("sidebar-main-nav"),
     sidebarNav: document.getElementById("sidebar-nav"),
+
+    // Secondary Course Sub-Sidebar
+    courseSidebar: document.getElementById("course-sidebar"),
+    courseSidebarBack: document.getElementById("course-sidebar-back"),
+    courseSidebarCode: document.getElementById("course-sidebar-code"),
+    courseSidebarTitle: document.getElementById("course-sidebar-title"),
+    courseSidebarNav: document.getElementById("course-sidebar-nav"),
 
     // Dashboard View
     courseGallery: document.getElementById("course-gallery"),
@@ -148,13 +155,9 @@
     // Courses View
     courseList: document.getElementById("course-list"),
 
-    // Course Detail View
-    courseDetailBack: document.getElementById("course-detail-back"),
-    courseDetailTitle: document.getElementById("course-detail-title"),
-    courseNavGrid: document.getElementById("course-nav-grid"),
-    courseItemsSection: document.getElementById("course-items-section"),
-    itemsBack: document.getElementById("items-back"),
-    itemsSectionTitle: document.getElementById("items-section-title"),
+    // Course Items View
+    itemsViewTitle: document.getElementById("items-view-title"),
+    itemsViewSubtitle: document.getElementById("items-view-subtitle"),
     itemList: document.getElementById("item-list"),
     moduleItemList: document.getElementById("module-item-list"),
 
@@ -172,6 +175,7 @@
     previewTitle: document.getElementById("preview-title"),
     previewExtra: document.getElementById("preview-extra"),
     previewText: document.getElementById("preview-text"),
+    previewSkeleton: document.getElementById("preview-skeleton"),
     mediaWarning: document.getElementById("media-warning"),
     previewCanvasLink: document.getElementById("preview-canvas-link"),
 
@@ -349,6 +353,54 @@
   }
 
   // ============================================================
+  // Skeleton Loading Placeholders
+  // ============================================================
+  function renderDashboardSkeleton() {
+    let html = "";
+    for (let i = 0; i < 6; i++) {
+      html += `
+        <div class="course-card skeleton-card">
+          <div class="course-card-banner skeleton"></div>
+          <div class="course-card-content">
+            <div class="skeleton skeleton-line" style="width: 35%; height: 12px; margin-bottom: 8px;"></div>
+            <div class="skeleton skeleton-line" style="width: 85%; height: 18px; margin-bottom: 6px;"></div>
+            <div class="skeleton skeleton-line" style="width: 60%; height: 14px;"></div>
+          </div>
+        </div>
+      `;
+    }
+    el.courseGallery.innerHTML = html;
+  }
+
+  function renderCoursesListSkeleton() {
+    let html = "";
+    for (let i = 0; i < 6; i++) {
+      html += `
+        <div class="course-list-item skeleton-row">
+          <div class="course-list-info" style="width: 100%;">
+            <div class="skeleton skeleton-line" style="width: 55%; height: 16px; margin-bottom: 6px;"></div>
+            <div class="skeleton skeleton-line" style="width: 25%; height: 12px;"></div>
+          </div>
+        </div>
+      `;
+    }
+    el.courseList.innerHTML = html;
+  }
+
+  function renderItemsSkeleton() {
+    let html = "";
+    for (let i = 0; i < 7; i++) {
+      html += `
+        <div class="item-row skeleton-row">
+          <div class="skeleton skeleton-line" style="width: 60%; height: 16px;"></div>
+          <div class="skeleton skeleton-line" style="width: 15%; height: 12px;"></div>
+        </div>
+      `;
+    }
+    el.itemList.innerHTML = html;
+  }
+
+  // ============================================================
   // View Management
   // ============================================================
   function showView(viewName) {
@@ -359,18 +411,24 @@
 
     if (viewName === "dashboard") {
       views.dashboard.hidden = false;
+      el.courseSidebar.hidden = true;
       updateSidebarActiveLink("dashboard");
       renderDashboard();
     } else if (viewName === "courses") {
       views.courses.hidden = false;
+      el.courseSidebar.hidden = true;
       updateSidebarActiveLink("courses");
       renderCoursesList();
-    } else if (viewName === "course-detail") {
-      views.courseDetail.hidden = false;
+    } else if (viewName === "course-items") {
+      views.courseItems.hidden = false;
+      el.courseSidebar.hidden = false;
       updateSidebarActiveLink("courses");
+      updateCourseSidebar();
     } else if (viewName === "tabs") {
       views.tabs.hidden = false;
+      el.courseSidebar.hidden = false;
       updateSidebarActiveLink("courses");
+      updateCourseSidebar();
     }
   }
 
@@ -379,6 +437,17 @@
     el.sidebarMainNav.querySelectorAll(".sidebar-link").forEach(link => {
       link.classList.toggle("active", link.dataset.view === viewKey);
     });
+  }
+
+  function updateCourseSidebar() {
+    if (!state.currentCourse) return;
+    el.courseSidebarCode.textContent = `Course ${state.currentCourse.id}`;
+    el.courseSidebarTitle.textContent = state.currentCourse.name;
+    if (el.courseSidebarNav) {
+      el.courseSidebarNav.querySelectorAll(".course-sub-link").forEach(link => {
+        link.classList.toggle("active", link.dataset.type === state.currentContentType);
+      });
+    }
   }
 
   // ============================================================
@@ -402,7 +471,7 @@
   }
 
   async function renderDashboard() {
-    el.courseGallery.innerHTML = `<div class="gallery-loading"><span class="btn-spinner"></span> Loading courses…</div>`;
+    renderDashboardSkeleton();
     try {
       const courses = await fetchCourses();
       if (courses.length === 0) {
@@ -428,7 +497,7 @@
         `;
 
         card.addEventListener("click", () => {
-          openCourseDetail(course);
+          openCourse(course, "modules");
         });
 
         el.courseGallery.appendChild(card);
@@ -439,7 +508,7 @@
   }
 
   async function renderCoursesList() {
-    el.courseList.innerHTML = `<div class="gallery-loading"><span class="btn-spinner"></span> Loading courses…</div>`;
+    renderCoursesListSkeleton();
     try {
       const courses = await fetchCourses();
       if (courses.length === 0) {
@@ -459,7 +528,7 @@
         `;
 
         item.addEventListener("click", () => {
-          openCourseDetail(course);
+          openCourse(course, "modules");
         });
 
         el.courseList.appendChild(item);
@@ -470,56 +539,59 @@
   }
 
   // ============================================================
-  // Course Detail Page
+  // Course Opening & Sub-Sidebar Navigation
   // ============================================================
-  function openCourseDetail(course) {
+  function openCourse(course, initialType = "modules") {
     state.currentCourse = course;
-    el.courseDetailTitle.textContent = course.name;
-    el.courseNavGrid.hidden = false;
-    el.courseItemsSection.hidden = true;
-    showView("course-detail");
+    state.currentContentType = initialType;
+    showView("course-items");
+    openCourseSection(initialType);
     loadChatForCourse(course.id);
   }
 
-  // Clicks on Course Nav Cards (Modules, Assignments, Discussions, Pages)
-  if (el.courseNavGrid) {
-    el.courseNavGrid.addEventListener("click", e => {
-      const card = e.target.closest(".course-nav-card");
-      if (!card || !state.currentCourse) return;
-      const type = card.dataset.type;
-      state.currentContentType = type;
+  function openCourseSection(type) {
+    state.currentContentType = type;
+    updateCourseSidebar();
 
-      const titles = {
-        modules: "Modules",
-        assignments: "Assignments",
-        discussions: "Discussions",
-        pages: "Pages"
-      };
+    const titles = {
+      modules: "Modules",
+      assignments: "Assignments",
+      discussions: "Discussions",
+      pages: "Pages"
+    };
 
-      el.itemsSectionTitle.textContent = titles[type] || "Items";
-      el.courseNavGrid.hidden = true;
-      el.courseItemsSection.hidden = false;
-      el.moduleItemList.hidden = true;
-      el.itemList.hidden = false;
-      loadItems(type);
+    el.itemsViewTitle.textContent = titles[type] || "Items";
+    el.itemsViewSubtitle.textContent = `All ${titles[type]?.toLowerCase() || "items"} in ${state.currentCourse?.name || "this course"}`;
+
+    el.moduleItemList.hidden = true;
+    el.itemList.hidden = false;
+    loadItems(type);
+  }
+
+  // Clicks in Course Sub-Sidebar
+  if (el.courseSidebarNav) {
+    el.courseSidebarNav.addEventListener("click", e => {
+      const link = e.target.closest(".course-sub-link");
+      if (!link || !state.currentCourse) return;
+      const type = link.dataset.type;
+      if (state.activeView === "tabs") {
+        showView("course-items");
+      }
+      openCourseSection(type);
     });
   }
 
-  if (el.itemsBack) {
-    el.itemsBack.addEventListener("click", () => {
-      el.courseItemsSection.hidden = true;
-      el.courseNavGrid.hidden = false;
+  if (el.courseSidebarBack) {
+    el.courseSidebarBack.addEventListener("click", () => {
+      showView("courses");
     });
   }
 
-  if (el.courseDetailBack) {
-    el.courseDetailBack.addEventListener("click", () => {
-      showView("dashboard");
-    });
-  }
-
+  // ============================================================
+  // Course Items Fetching & Rendering
+  // ============================================================
   async function loadItems(type) {
-    el.itemList.innerHTML = `<div class="gallery-loading"><span class="btn-spinner"></span> Loading ${type}…</div>`;
+    renderItemsSkeleton();
     try {
       const items = await api("/api/canvas/items", {
         canvasUrl: state.canvasUrl,
@@ -556,7 +628,18 @@
   async function loadModuleItems(moduleId, moduleName) {
     el.itemList.hidden = true;
     el.moduleItemList.hidden = false;
-    el.moduleItemList.innerHTML = `<div class="gallery-loading"><span class="btn-spinner"></span> Loading items…</div>`;
+    el.moduleItemList.innerHTML = `
+      <button class="back-row" id="module-back-btn">← Back to Modules</button>
+      <div class="skeleton skeleton-line" style="width: 70%; height: 16px; margin: 12px 0;"></div>
+      <div class="skeleton skeleton-line" style="width: 85%; height: 16px; margin-bottom: 8px;"></div>
+      <div class="skeleton skeleton-line" style="width: 60%; height: 16px;"></div>
+    `;
+
+    document.getElementById("module-back-btn")?.addEventListener("click", () => {
+      el.moduleItemList.hidden = true;
+      el.itemList.hidden = false;
+    });
+
     try {
       const items = await api("/api/canvas/module-items", {
         canvasUrl: state.canvasUrl,
@@ -625,7 +708,7 @@
 
   if (el.tabBack) {
     el.tabBack.addEventListener("click", () => {
-      showView("course-detail");
+      showView("course-items");
     });
   }
 
@@ -634,11 +717,12 @@
     switchTab("content");
 
     el.tabContentLabel.textContent = itemName || "Content";
-    el.previewTitle.textContent = "Loading…";
+    el.previewTitle.textContent = itemName || "Loading…";
     el.previewText.textContent = "";
     el.previewExtra.textContent = "";
     el.mediaWarning.hidden = true;
     el.previewCanvasLink.hidden = true;
+    el.previewSkeleton.hidden = false;
 
     try {
       let data;
@@ -677,6 +761,7 @@
       }
 
       state.currentContext = data;
+      el.previewSkeleton.hidden = true;
       el.previewTitle.textContent = data.title || itemName || "Untitled";
       el.previewExtra.textContent = data.extra || "";
       el.previewText.textContent = data.body || "(No text content)";
@@ -697,6 +782,7 @@
       el.promptChips.hidden = false;
       setInputEnabled(true);
     } catch (err) {
+      el.previewSkeleton.hidden = true;
       el.previewTitle.textContent = "Couldn't load this item";
       el.previewText.textContent = err.message;
     }
@@ -1102,7 +1188,6 @@
         saveChatLocally(state.currentCourse.id);
 
         if (window.SupabaseClient && window.SupabaseClient.isConfigured()) {
-          // If no session exists yet, create one
           if (!state.currentSessionId) {
             try {
               const { data: session } = await window.SupabaseClient.saveChatSession({
@@ -1265,13 +1350,13 @@ Create at least 8 flashcards covering the most important points.`
   // ============================================================
   if (el.sidebarCollapseBtn) {
     el.sidebarCollapseBtn.addEventListener("click", () => {
-      const collapsed = el.appShell.classList.toggle("sidebar-collapsed");
+      const collapsed = el.sidebar.classList.toggle("collapsed");
       localStorage.setItem(SIDEBAR_STORAGE, collapsed ? "1" : "0");
     });
   }
 
-  if (localStorage.getItem(SIDEBAR_STORAGE) === "1" && el.appShell) {
-    el.appShell.classList.add("sidebar-collapsed");
+  if (localStorage.getItem(SIDEBAR_STORAGE) === "1" && el.sidebar) {
+    el.sidebar.classList.add("collapsed");
   }
 
   if (el.sidebarMainNav) {

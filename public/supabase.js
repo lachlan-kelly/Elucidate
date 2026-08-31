@@ -211,6 +211,42 @@
         }
     };
 
+    const findChatSessionForCourse = async (courseId) => {
+        try {
+            const client = getClient();
+            if (!client) throw new Error("Supabase client not initialized.");
+            const { user, error: userError } = await getUser();
+            if (userError || !user) throw new Error("User not found.");
+
+            const { data, error } = await client
+                .from('chat_sessions')
+                .select('*')
+                .eq('user_id', user.id)
+                .eq('course_id', courseId)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            return { data, error };
+        } catch (error) {
+            return { data: null, error };
+        }
+    };
+
+    const deleteChatSession = async (sessionId) => {
+        try {
+            const client = getClient();
+            if (!client) throw new Error("Supabase client not initialized.");
+            const { error } = await client
+                .from('chat_sessions')
+                .delete()
+                .eq('id', sessionId);
+            return { error };
+        } catch (error) {
+            return { error };
+        }
+    };
+
     window.SupabaseClient = {
         init,
         getClient,
@@ -226,6 +262,8 @@
         saveChatSession,
         saveChatMessage,
         loadChatSessions,
-        loadChatMessages
+        loadChatMessages,
+        findChatSessionForCourse,
+        deleteChatSession
     };
 })();

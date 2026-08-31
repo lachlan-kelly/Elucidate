@@ -22,17 +22,34 @@
       this.guards[routeName] = guardFn;
     },
 
-    getRouteNameFromHash: function() {
+    getParams: function() {
       const hash = window.location.hash;
       if (!hash || !hash.startsWith('#/')) {
+        return [];
+      }
+      const path = hash.substring(2);
+      return path ? path.split('/').filter(p => p.length > 0) : [];
+    },
+
+    getRouteNameFromHash: function() {
+      const params = this.getParams();
+      if (params.length === 0) {
         return 'connect';
       }
-      const routeName = hash.substring(2);
+      const routeName = params[0];
       return this.routes[routeName] ? routeName : 'connect';
+    },
+
+    getSubRoute: function() {
+      const params = this.getParams();
+      if (params.length <= 1) return '';
+      return params.slice(1).join('/');
     },
 
     handleHashChange: function() {
       const targetRoute = this.getRouteNameFromHash();
+      const subRoute = this.getSubRoute();
+      const params = this.getParams();
 
       // Check guards first
       if (this.guards[targetRoute]) {
@@ -68,7 +85,9 @@
       const event = new CustomEvent('routechange', {
         detail: {
           from: previousRoute,
-          to: targetRoute
+          to: targetRoute,
+          subRoute: subRoute,
+          params: params
         }
       });
       document.dispatchEvent(event);

@@ -75,7 +75,7 @@
 <div class="page page-chat" id="page-chat" hidden>
   <div class="app-shell" id="app-shell">
 
-    <!-- LEFT: SIDEBAR NAVIGATION -->
+    <!-- LEFT: SIDEBAR NAVIGATION (Canvas-style) -->
     <aside class="sidebar" id="sidebar">
       <header class="brand">
         <img src="logo.png" alt="Elucidate" class="brand-mark" />
@@ -89,34 +89,17 @@
       </header>
 
       <div class="sidebar-content" id="sidebar-content">
-        <section class="panel" id="course-panel">
-          <button class="panel-toggle" id="course-toggle" aria-expanded="true">
-            <span>Course</span>
-            <span class="chevron">▾</span>
+        <!-- Main navigation links -->
+        <nav class="sidebar-main-nav" id="sidebar-main-nav">
+          <button class="sidebar-link active" data-view="dashboard">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+            <span class="sidebar-link-label">Dashboard</span>
           </button>
-          <div class="panel-body" id="course-body">
-            <select id="course-select">
-              <option value="">Loading courses…</option>
-            </select>
-          </div>
-        </section>
-
-        <section class="panel" id="tabs-panel" hidden>
-          <button class="panel-toggle" id="tabs-toggle" aria-expanded="true">
-            <span>Content</span>
-            <span class="chevron">▾</span>
+          <button class="sidebar-link" data-view="courses">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+            <span class="sidebar-link-label">Courses</span>
           </button>
-          <div class="panel-body" id="tabs-body">
-            <div class="tab-strip" id="tab-strip">
-              <button class="tab" data-type="modules">Modules</button>
-              <button class="tab" data-type="assignments">Assignments</button>
-              <button class="tab" data-type="discussions">Discussions</button>
-              <button class="tab" data-type="pages">Pages</button>
-            </div>
-            <div class="item-list" id="item-list"></div>
-            <div class="item-list" id="module-item-list" hidden></div>
-          </div>
-        </section>
+        </nav>
       </div>
 
       <!-- Bottom nav links -->
@@ -126,7 +109,7 @@
           <span class="sidebar-nav-label">Settings</span>
         </button>
         <button class="sidebar-nav-btn" data-route="docs" title="Documentation">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
           <span class="sidebar-nav-label">Docs</span>
         </button>
         <button class="sidebar-nav-btn sidebar-nav-danger" data-route="logout" title="Logout">
@@ -136,66 +119,152 @@
       </nav>
     </aside>
 
-    <!-- RIGHT: CONTENT + CHAT -->
-    <main class="main">
+    <!-- RIGHT: MAIN CONTENT AREA -->
+    <main class="main" id="main-content">
 
-      <section class="content-preview" id="content-preview" hidden>
-        <button class="preview-toggle" id="preview-toggle">
-          <div>
-            <span class="preview-label">Reading</span>
-            <div class="preview-title-row">
-              <h2 id="preview-title">—</h2>
-              <a id="preview-canvas-link" class="preview-canvas-link" href="#" target="_blank" rel="noopener" hidden title="Open in Canvas">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-              </a>
+      <!-- ===== VIEW: DASHBOARD (course gallery) ===== -->
+      <div class="view" id="view-dashboard">
+        <div class="view-header">
+          <h1>Dashboard</h1>
+          <p class="view-subtitle">Your courses at a glance</p>
+        </div>
+        <div class="course-gallery" id="course-gallery">
+          <div class="gallery-loading">
+            <span class="btn-spinner"></span> Loading courses...
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== VIEW: COURSES (list) ===== -->
+      <div class="view" id="view-courses" hidden>
+        <div class="view-header">
+          <h1>Courses</h1>
+          <p class="view-subtitle">All your enrolled courses</p>
+        </div>
+        <div class="course-list" id="course-list">
+          <div class="gallery-loading">
+            <span class="btn-spinner"></span> Loading courses...
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== VIEW: COURSE DETAIL (per-course nav) ===== -->
+      <div class="view" id="view-course-detail" hidden>
+        <div class="view-header">
+          <button class="back-link" id="course-detail-back">← Back to courses</button>
+          <h1 id="course-detail-title">Course Name</h1>
+        </div>
+        <div class="course-nav-grid" id="course-nav-grid">
+          <button class="course-nav-card" data-type="modules">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/></svg>
+            <span>Modules</span>
+          </button>
+          <button class="course-nav-card" data-type="assignments">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            <span>Assignments</span>
+          </button>
+          <button class="course-nav-card" data-type="discussions">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <span>Discussions</span>
+          </button>
+          <button class="course-nav-card" data-type="pages">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+            <span>Pages</span>
+          </button>
+        </div>
+        <!-- Item listing area (shown after clicking a nav card) -->
+        <div class="course-items-section" id="course-items-section" hidden>
+          <div class="course-items-header">
+            <button class="back-link" id="items-back">← Back to course</button>
+            <h2 id="items-section-title">Modules</h2>
+          </div>
+          <div class="item-list" id="item-list"></div>
+          <div class="item-list" id="module-item-list" hidden></div>
+        </div>
+      </div>
+
+      <!-- ===== VIEW: TAB VIEW (content + chat, VSCode-style) ===== -->
+      <div class="view view-tabs" id="view-tabs" hidden>
+        <div class="tab-bar" id="tab-bar">
+          <div class="tab-bar-left">
+            <button class="back-link tab-back-btn" id="tab-back">← Back</button>
+          </div>
+          <div class="tab-bar-tabs">
+            <button class="view-tab active" data-tab="content" id="tab-btn-content">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <span id="tab-content-label">Content</span>
+            </button>
+            <button class="view-tab" data-tab="chat" id="tab-btn-chat">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              <span>AI Chat</span>
+            </button>
+          </div>
+          <div class="tab-bar-right"></div>
+        </div>
+
+        <!-- Content tab panel -->
+        <div class="tab-panel" id="tab-panel-content">
+          <section class="content-preview" id="content-preview">
+            <div class="preview-header">
+              <div>
+                <span class="preview-label">Reading</span>
+                <div class="preview-title-row">
+                  <h2 id="preview-title">—</h2>
+                  <a id="preview-canvas-link" class="preview-canvas-link" href="#" target="_blank" rel="noopener" hidden title="Open in Canvas">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                  </a>
+                </div>
+              </div>
             </div>
-          </div>
-          <span class="chevron" id="preview-chevron">▾</span>
-        </button>
-        <div class="preview-body" id="preview-body">
-          <p class="preview-extra" id="preview-extra"></p>
-          <p class="media-warning" id="media-warning" hidden></p>
-          <pre id="preview-text"></pre>
+            <div class="preview-body" id="preview-body">
+              <p class="preview-extra" id="preview-extra"></p>
+              <p class="media-warning" id="media-warning" hidden></p>
+              <pre id="preview-text"></pre>
+            </div>
+          </section>
         </div>
-      </section>
 
-      <section class="chat" id="chat-section">
-        <div class="chat-log" id="chat-log">
-          <div class="empty-state" id="empty-state">
-            <img src="logo.png" alt="" class="empty-mark" />
-            <h2>Pick a page to start</h2>
-            <p>Choose a course on the left, then select a module item, assignment, discussion, or page. Its content loads into this chat automatically.</p>
-          </div>
+        <!-- Chat tab panel -->
+        <div class="tab-panel" id="tab-panel-chat" hidden>
+          <section class="chat" id="chat-section">
+            <div class="chat-log" id="chat-log">
+              <div class="empty-state" id="empty-state">
+                <img src="logo.png" alt="" class="empty-mark" />
+                <h2>Start a conversation</h2>
+                <p>Ask questions about this content — the AI has full context about what you're reading.</p>
+              </div>
+            </div>
+            <div class="prompt-chips" id="prompt-chips" hidden>
+              <button type="button" class="chip" data-prompt="quiz">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M5 6a3 3 0 1 1 4 2.83c-.6.2-1 .78-1 1.42v.25" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="8" cy="12.5" r="0.9" fill="currentColor"/></svg>
+                Make me a quiz
+              </button>
+              <button type="button" class="chip" data-prompt="summarise">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="3" y="2.5" width="10" height="11" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M5.5 6h5M5.5 8.5h5M5.5 11h3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                Summarise my assignment
+              </button>
+              <button type="button" class="chip" data-prompt="mark-essay">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Mark my essay
+              </button>
+              <button type="button" class="chip" data-prompt="flashcards">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="2" y="3" width="9" height="7" rx="1.2" stroke="currentColor" stroke-width="1.3"/><rect x="5" y="6" width="9" height="7" rx="1.2" stroke="currentColor" stroke-width="1.3"/></svg>
+                Make me flashcards
+              </button>
+            </div>
+            <form class="chat-input-row" id="chat-form">
+              <button type="button" class="attach-btn" id="attach-btn" title="Attach a file" disabled>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.49"/></svg>
+              </button>
+              <div class="chat-input-wrap">
+                <div class="attachment-chips" id="attachment-chips" hidden></div>
+                <textarea id="chat-input" placeholder="Ask about this content…" rows="1" disabled></textarea>
+              </div>
+              <input type="file" id="file-input" hidden multiple />
+            </form>
+          </section>
         </div>
-        <div class="prompt-chips" id="prompt-chips" hidden>
-          <button type="button" class="chip" data-prompt="quiz">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M5 6a3 3 0 1 1 4 2.83c-.6.2-1 .78-1 1.42v.25" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="8" cy="12.5" r="0.9" fill="currentColor"/></svg>
-            Make me a quiz
-          </button>
-          <button type="button" class="chip" data-prompt="summarise">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="3" y="2.5" width="10" height="11" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M5.5 6h5M5.5 8.5h5M5.5 11h3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-            Summarise my assignment
-          </button>
-          <button type="button" class="chip" data-prompt="mark-essay">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3 3 7-7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            Mark my essay
-          </button>
-          <button type="button" class="chip" data-prompt="flashcards">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="2" y="3" width="9" height="7" rx="1.2" stroke="currentColor" stroke-width="1.3"/><rect x="5" y="6" width="9" height="7" rx="1.2" stroke="currentColor" stroke-width="1.3"/></svg>
-            Make me flashcards
-          </button>
-        </div>
-        <form class="chat-input-row" id="chat-form">
-          <button type="button" class="attach-btn" id="attach-btn" title="Attach a file" disabled>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.49"/></svg>
-          </button>
-          <div class="chat-input-wrap">
-            <div class="attachment-chips" id="attachment-chips" hidden></div>
-            <textarea id="chat-input" placeholder="Ask about this page…" rows="1" disabled></textarea>
-          </div>
-          <input type="file" id="file-input" hidden multiple />
-        </form>
-      </section>
+      </div>
 
     </main>
   </div>
